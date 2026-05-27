@@ -5,13 +5,18 @@ zerops:
   - setup: web
     build:
       base: ubuntu/python@3.12
+      # addToRunPrepare ships utils/ to /home/zerops/ for run.prepareCommands (which fires
+      # BEFORE deployFiles land at /var/www/). deployFiles keeps utils at /var/www/ so initCommands
+      # can still source it (ch-init.sh).
+      addToRunPrepare:
+        - utils
       deployFiles:
         - utils
     run:
       base: ubuntu/python@3.12
       prepareCommands:
-        - bash utils/init.sh web
-        - bash utils/patches.sh web
+        - bash /home/zerops/utils/init.sh web
+        - bash /home/zerops/utils/patches.sh web
       envVariables:
         DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
         POSTHOG_POSTGRES_HOST: ${db_hostname}
@@ -69,7 +74,7 @@ zerops:
           httpSupport: true
       initCommands:
         # One-time: Atomic db + default user + grants + named Kafka collection (see utils/ch-init.sh)
-        - zsc execOnce ch-setup --retryUntilSuccessful -- bash utils/ch-init.sh
+        - zsc execOnce ch-setup --retryUntilSuccessful -- bash /var/www/utils/ch-init.sh
         - zsc execOnce ${appVersionId}-django --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate --noinput"
         - zsc execOnce ${appVersionId}-clickhouse --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate_clickhouse"
       start: >-
@@ -87,13 +92,18 @@ zerops:
   - setup: worker
     build:
       base: ubuntu/python@3.12
+      # addToRunPrepare ships utils/ to /home/zerops/ for run.prepareCommands (which fires
+      # BEFORE deployFiles land at /var/www/). deployFiles keeps utils at /var/www/ so initCommands
+      # can still source it (ch-init.sh).
+      addToRunPrepare:
+        - utils
       deployFiles:
         - utils
     run:
       base: ubuntu/python@3.12
       prepareCommands:
-        - bash utils/init.sh worker
-        - bash utils/patches.sh worker
+        - bash /home/zerops/utils/init.sh worker
+        - bash /home/zerops/utils/patches.sh worker
       envVariables:
         DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
         POSTHOG_POSTGRES_HOST: ${db_hostname}
@@ -150,12 +160,15 @@ zerops:
   - setup: pluginserver
     build:
       base: ubuntu/nodejs@24
+      # See web/worker for the addToRunPrepare-vs-deployFiles split rationale.
+      addToRunPrepare:
+        - utils
       deployFiles:
         - utils
     run:
       base: ubuntu/nodejs@24
       prepareCommands:
-        - bash utils/init.sh pluginserver
+        - bash /home/zerops/utils/init.sh pluginserver
       envVariables:
         DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
         POSTHOG_POSTGRES_HOST: ${db_hostname}
@@ -236,12 +249,15 @@ zerops:
   - setup: ingestion
     build:
       base: ubuntu/nodejs@24
+      # See web/worker for the addToRunPrepare-vs-deployFiles split rationale.
+      addToRunPrepare:
+        - utils
       deployFiles:
         - utils
     run:
       base: ubuntu/nodejs@24
       prepareCommands:
-        - bash utils/init.sh pluginserver
+        - bash /home/zerops/utils/init.sh pluginserver
       envVariables:
         PLUGIN_SERVER_MODE: ingestion-v2
         DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
@@ -300,12 +316,15 @@ zerops:
   - setup: recordings
     build:
       base: ubuntu/nodejs@24
+      # See web/worker for the addToRunPrepare-vs-deployFiles split rationale.
+      addToRunPrepare:
+        - utils
       deployFiles:
         - utils
     run:
       base: ubuntu/nodejs@24
       prepareCommands:
-        - bash utils/init.sh pluginserver
+        - bash /home/zerops/utils/init.sh pluginserver
       envVariables:
         PLUGIN_SERVER_MODE: recordings-blob-ingestion-v2
         DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
@@ -363,12 +382,15 @@ zerops:
   - setup: cyclotron
     build:
       base: ubuntu/nodejs@24
+      # See web/worker for the addToRunPrepare-vs-deployFiles split rationale.
+      addToRunPrepare:
+        - utils
       deployFiles:
         - utils
     run:
       base: ubuntu/nodejs@24
       prepareCommands:
-        - bash utils/init.sh pluginserver
+        - bash /home/zerops/utils/init.sh pluginserver
         # psql for the migration step (cyclotron's SQL isn't bundled in the posthog-node image)
         - sudo apt-get install -y --no-install-recommends postgresql-client
       envVariables:
@@ -431,7 +453,7 @@ zerops:
         NO_RESTART_LOOP: '1'
       initCommands:
         # Apply Cyclotron's sqlx migrations before the worker tries to read from the queue
-        - zsc execOnce cyclotron-migrations --retryUntilSuccessful -- bash utils/cyclotron-migrations.sh
+        - zsc execOnce cyclotron-migrations --retryUntilSuccessful -- bash /var/www/utils/cyclotron-migrations.sh
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js
 
   # ── capture ───────────────────────────────────────────────────────────────────
