@@ -27,7 +27,7 @@ The Python and Node runtimes pull their code from the prebuilt PostHog Docker im
 
 Import this project topology from the Zerops dashboard (Settings → Import project) using [`zerops-import.yaml`](./zerops-import.yaml). Zerops provisions the six managed/utility services and clones this repo into each Node/Python runtime via `buildFromGit`. The recipe's [`utils/init.sh`](./utils/init.sh) + [`utils/patches.sh`](./utils/patches.sh) (shipped via `build.addToRunPrepare`) materialize PostHog under `/opt/posthog/` during `run.prepareCommands`.
 
-First boot takes ~10 minutes for the Python/Node services (image pull + extraction + ~272 ClickHouse migrations) and ~19 minutes for the capture service (cold cargo build). When `web`'s health check goes green, browse to the assigned subdomain — PostHog's "Validate implementation" wizard should show all checks green.
+First boot takes ~10 minutes for the Python/Node services (image pull + extraction + ~272 ClickHouse migrations) and ~21 minutes for the capture service (cold cargo build — `rdkafka-sys` + `aws-lc-sys` both compile C/C++ from source on shared CPU). When `web`'s health check goes green, browse to the assigned subdomain — PostHog's "Validate implementation" wizard should show all checks green. Subsequent capture rebuilds hit the cargo target + registry cache and finish in 1–2 minutes.
 
 ## ClickHouse must be HA
 
@@ -98,7 +98,7 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 
 PostHog Cloud serves the high-throughput capture endpoints (`/e/`, `/i/`, `/decide/`, `/flags/`) from a dedicated Rust binary, not Django. Upstream `capture-rs` has no SASL Kafka support — its rdkafka `ClientConfig` is built from a struct exposing only TLS — so to use it against Zerops's SASL-only Kafka listener we run a small fork at [`fxck/posthog-capture`](https://github.com/fxck/posthog-capture) that adds four optional env vars (`KAFKA_SECURITY_PROTOCOL` / `KAFKA_SASL_MECHANISM` / `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD`) and propagates them to the rdkafka client. The fork's own `zerops.yml` carries the `capture` setup block.
 
-The `capture` service builds that fork via `cargo build --release -p capture` on first deploy (~19 min first time, cached on subsequent builds via `build.cache` on the cargo target dir + registry) and exposes the binary on its own subdomain.
+The `capture` service builds that fork via `cargo build --release -p capture` on first deploy (~21 min cold, cached on subsequent builds via `build.cache` on the cargo target dir + registry — rebuilds finish in 1–2 min) and exposes the binary on its own subdomain.
 
 Point your PostHog JS at both subdomains:
 
