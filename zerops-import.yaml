@@ -8,6 +8,16 @@ project:
     - posthog
     - analytics
     - recipe
+  # Generated once at import; shared (unprefixed) across web, worker, and pluginserver.
+  envVariables:
+    # Django session/CSRF/etc. crypto. PostHog refuses to boot in production with the literal default.
+    SECRET_KEY: <@generateRandomString(64)>
+    # Fernet-derived field encryption used by integrations + hog functions. PostHog default is "00beef0000beef0000beef0000beef00".
+    ENCRYPTION_SALT_KEYS: <@generateRandomString(32)>
+    # Older symmetric salt for encrypted_fields helper. PostHog default is "0123456789abcdefghijklmnopqrstuvwxyz".
+    SALT_KEY: <@generateRandomString(32)>
+    # Shared Django ↔ Node plugin-server internal-API auth. PostHog default is the literal "posthog123" (LOCAL_DEV_INTERNAL_API_SECRET). Must match across services.
+    INTERNAL_API_SECRET: <@generateRandomString(32)>
 
 services:
   # Managed dependencies — order doesn't matter, Zerops resolves provisioning order.

@@ -72,6 +72,19 @@ The Django and ClickHouse migrations follow, both also guarded by `execOnce` so 
     └── ch-init.sh          # ClickHouse one-time bootstrap (called from web's initCommands)
 ```
 
+## Secrets
+
+Four project-level secrets are auto-generated once at import (see [`zerops-import.yaml`](./zerops-import.yaml#L13)) and shared across all three runtimes:
+
+| Env | Purpose | PostHog default (insecure) |
+|---|---|---|
+| `SECRET_KEY` | Django session / CSRF crypto | Django refuses to boot in production |
+| `ENCRYPTION_SALT_KEYS` | Fernet field encryption (integrations, hog functions) | `00beef0000beef0000beef0000beef00` |
+| `SALT_KEY` | Older symmetric salt for `encrypted_fields` helper | `0123456789abcdefghijklmnopqrstuvwxyz` |
+| `INTERNAL_API_SECRET` | Django ↔ plugin-server internal-API auth | `posthog123` (LOCAL_DEV literal) |
+
+`INTERNAL_API_SECRET` in particular must match across `web` and `pluginserver`. Defining it at the project level guarantees both runtimes see the same value.
+
 ## Caveats
 
 - **Pinned to image `:latest`.** First deploy locks in whatever `posthog/posthog:latest` and `posthog/posthog-node:latest` resolved to at build time. Switching versions = redeploy. The patches in `patches.sh` were verified against PostHog ~late 2025; newer versions may move code around and require re-targeting.
