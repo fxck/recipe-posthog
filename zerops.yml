@@ -75,11 +75,6 @@ zerops:
       initCommands:
         # One-time: Atomic db + default user + grants + named Kafka collection (see utils/ch-init.sh)
         - zsc execOnce ch-setup --retryUntilSuccessful -- bash /var/www/utils/ch-init.sh
-        # Fernet-probe gate — proves the three crypto envs (ENCRYPTION_SALT_KEYS / SALT_KEY /
-        # SECRET_KEY) are loaded and construct valid Fernet keys before migrate. Without this,
-        # migration 1094 (adds an EncryptedCharField with default="") is the first thing to touch
-        # Fernet and intermittently fails on first-container-boot with a 30-line Django traceback.
-        - zsc execOnce fernet-probe --retryUntilSuccessful -- bash /var/www/utils/fernet-probe.sh
         - zsc execOnce ${appVersionId}-django --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate --noinput"
         - zsc execOnce ${appVersionId}-clickhouse --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate_clickhouse"
       start: >-
