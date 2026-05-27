@@ -1,3 +1,4 @@
+#zeropsPreprocessor=true
 project:
   name: posthog
   description: |
