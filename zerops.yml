@@ -73,6 +73,13 @@ zerops:
         - port: 8000
           httpSupport: true
       initCommands:
+        # Pre-boost RAM to maxRam for 30min before migrate. PostHog's Django startup
+        # (settings load + clickhouse_orm + apps.ready()) peaks ~1 GB in <5s, plus the
+        # migration itself loads every model class — together they exceed minRam before
+        # the autoscaler can react (~10-20s window). zsc scale explicitly grants the
+        # ceiling within ~10s and auto-expires after the duration. Covers migrate +
+        # gunicorn warmup; autoscaler manages steady state after.
+        - zsc scale ram max 30m
         # One-time: Atomic db + default user + grants + named Kafka collection (see utils/ch-init.sh)
         - zsc execOnce ch-setup --retryUntilSuccessful -- bash /var/www/utils/ch-init.sh
         - zsc execOnce ${appVersionId}-django --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate --noinput"
@@ -152,6 +159,10 @@ zerops:
         EMAIL_USE_TLS: 'False'
         EMAIL_USE_SSL: 'False'
         EMAIL_DEFAULT_FROM: noreply@posthog.local
+      initCommands:
+        # Pre-boost RAM to maxRam for 10min so Celery startup (loads same PostHog code as web,
+        # ~1 GB peak) doesn't OOM before the autoscaler reacts. Auto-expires; autoscaler manages after.
+        - zsc scale ram max 10m
       start: cd /opt/posthog/code && PATH=/opt/posthog/python-runtime/bin:$PATH exec ./bin/docker-worker-celery --with-scheduler
 
   # ── pluginserver ──────────────────────────────────────────────────────────────
@@ -244,6 +255,9 @@ zerops:
         SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
         POSTHOG_SKIP_MIGRATION_CHECKS: '1'
         NO_RESTART_LOOP: '1'
+      initCommands:
+        # Pre-boost RAM to maxRam for 10min so Node bundle load doesn't OOM before autoscaler reacts
+        - zsc scale ram max 10m
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js
 
   # ── ingestion ─────────────────────────────────────────────────────────────────
@@ -316,6 +330,9 @@ zerops:
         SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
         POSTHOG_SKIP_MIGRATION_CHECKS: '1'
         NO_RESTART_LOOP: '1'
+      initCommands:
+        # Pre-boost RAM to maxRam for 10min so Node bundle load doesn't OOM before autoscaler reacts
+        - zsc scale ram max 10m
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js
 
   # ── recordings ────────────────────────────────────────────────────────────────
@@ -390,6 +407,9 @@ zerops:
         SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
         POSTHOG_SKIP_MIGRATION_CHECKS: '1'
         NO_RESTART_LOOP: '1'
+      initCommands:
+        # Pre-boost RAM to maxRam for 10min so Node bundle load doesn't OOM before autoscaler reacts
+        - zsc scale ram max 10m
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js
 
   # ── cyclotron ─────────────────────────────────────────────────────────────────
@@ -478,6 +498,8 @@ zerops:
         POSTHOG_SKIP_MIGRATION_CHECKS: '1'
         NO_RESTART_LOOP: '1'
       initCommands:
+        # Pre-boost RAM to maxRam for 10min so Node bundle load doesn't OOM before autoscaler reacts
+        - zsc scale ram max 10m
         # Apply Cyclotron's sqlx migrations before the worker tries to read from the queue
         - zsc execOnce cyclotron-migrations --retryUntilSuccessful -- bash /var/www/utils/cyclotron-migrations.sh
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js

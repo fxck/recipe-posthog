@@ -86,6 +86,9 @@ services:
     verticalAutoscaling:
       minCpu: 1
       maxCpu: 2
+      # Low idle floor; web's initCommands run `zsc scale ram max 30m` before migrate,
+      # which explicitly grants maxRam within ~10s and covers the Django startup spike.
+      # Autoscaler shrinks back to actual usage after the 30m boost expires.
       minRam: 0.5
       maxRam: 2
     priority: 5
@@ -99,6 +102,8 @@ services:
     verticalAutoscaling:
       minCpu: 1
       maxCpu: 2
+      # Celery loads PostHog code at startup — same ~1 GB peak as web. worker.zerops.yml
+      # uses the same `zsc scale ram max 10m` pre-boost pattern to dodge the autoscaler race.
       minRam: 0.5
       maxRam: 2
     priority: 5
@@ -112,8 +117,9 @@ services:
     verticalAutoscaling:
       minCpu: 1
       maxCpu: 2
-      # Default-mode pluginserver loads CDP + flags + logs + error-tracking — biggest Node bundle
-      minRam: 0.75
+      # Default-mode pluginserver loads CDP + flags + logs + error-tracking — biggest Node bundle.
+      # Uses `zsc scale ram max 10m` pre-boost in initCommands.
+      minRam: 0.5
       maxRam: 2
     priority: 5
 
@@ -128,6 +134,7 @@ services:
     verticalAutoscaling:
       minCpu: 1
       maxCpu: 2
+      # Pre-boost via `zsc scale ram max 10m` in ingestion.zerops.yml initCommands
       minRam: 0.5
       maxRam: 2
     priority: 5
@@ -157,7 +164,7 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      # Lightweight job drainer; doesn't need pluginserver headroom
+      # Lightweight job drainer — still loads the full Node bundle though
       minCpu: 1
       maxCpu: 2
       minRam: 0.5
