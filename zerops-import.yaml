@@ -50,6 +50,14 @@ services:
     objectStorageSize: 10
     priority: 10
 
+  # SMTP sink — Mailpit catches every outbound mail and exposes a web inbox on :8025.
+  # We use the official Zerops recipe verbatim; PostHog's EMAIL_HOST in zerops.yml points here.
+  - hostname: mailpit
+    type: alpine@3.20
+    buildFromGit: https://github.com/zeropsio/recipe-mailpit
+    enableSubdomainAccess: true
+    priority: 10
+
   # Runtime services — buildFromGit clones this repo into /var/www on the build container,
   # zerops.yml's deployFiles ships utils/ to runtime, run.prepareCommands lifts the image.
 

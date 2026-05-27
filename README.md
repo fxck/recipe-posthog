@@ -11,6 +11,7 @@ Self-hosted [PostHog](https://posthog.com) on Zerops — Django web, Celery work
 | `kafka` | kafka@3.9 | event queue |
 | `valkey` | valkey@7.2 | cache + plugin-server pub/sub + celery broker/backend |
 | `storage` | object-storage | session replays, exports |
+| `mailpit` | alpine@3.20 ([recipe-mailpit](https://github.com/zeropsio/recipe-mailpit)) | SMTP sink + web inbox on `:8025` |
 | `web` | ubuntu/python@3.12 | Django + gunicorn on `:8000` |
 | `worker` | ubuntu/python@3.12 | Celery worker + RedBeat scheduler |
 | `pluginserver` | ubuntu/nodejs@24 | Node CDP / hog-functions on `:6738` |
@@ -84,6 +85,10 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 | `INTERNAL_API_SECRET` | Django ↔ plugin-server internal-API auth | `posthog123` (LOCAL_DEV literal) |
 
 `INTERNAL_API_SECRET` in particular must match across `web` and `pluginserver`. Defining it at the project level guarantees both runtimes see the same value.
+
+## SMTP / Mailpit
+
+`web` and `worker` are wired to send through the bundled Mailpit (plain SMTP on `mailpit:1025`, no auth, no TLS). Open Mailpit's subdomain to see every email PostHog sends — alerts, weekly digests, password resets, invites. To use a real provider instead, override `EMAIL_HOST` + `EMAIL_PORT` + `EMAIL_HOST_USER` + `EMAIL_HOST_PASSWORD` + `EMAIL_USE_TLS` as service-level envs on `web` and `worker` from the Zerops dashboard.
 
 ## Caveats
 

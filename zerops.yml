@@ -58,6 +58,12 @@ zerops:
         DJANGO_SETTINGS_MODULE: posthog.settings
         # plugins preflight probes CDP_API_URL/_health; default is a k8s DNS name that doesn't resolve outside k8s
         CDP_API_URL: http://pluginserver:6738
+        # SMTP via the bundled Mailpit service (plain SMTP on :1025, web inbox on :8025)
+        EMAIL_HOST: mailpit
+        EMAIL_PORT: '1025'
+        EMAIL_USE_TLS: 'False'
+        EMAIL_USE_SSL: 'False'
+        EMAIL_DEFAULT_FROM: noreply@posthog.local
       ports:
         - port: 8000
           httpSupport: true
@@ -130,6 +136,12 @@ zerops:
         PYTHONUNBUFFERED: '1'
         POSTHOG_SKIP_MIGRATION_CHECKS: '1'
         DJANGO_SETTINGS_MODULE: posthog.settings
+        # SMTP via the bundled Mailpit service (alerts/digests sent from Celery tasks)
+        EMAIL_HOST: mailpit
+        EMAIL_PORT: '1025'
+        EMAIL_USE_TLS: 'False'
+        EMAIL_USE_SSL: 'False'
+        EMAIL_DEFAULT_FROM: noreply@posthog.local
       start: cd /opt/posthog/code && PATH=/opt/posthog/python-runtime/bin:$PATH exec ./bin/docker-worker-celery --with-scheduler
 
   # ── pluginserver ──────────────────────────────────────────────────────────────
