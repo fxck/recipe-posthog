@@ -28,6 +28,13 @@ services:
     mode: NON_HA
     priority: 10
 
+  # Dedicated Postgres for Cyclotron's job queue. Cyclotron churns the table heavily
+  # (insert-per-fire, delete-per-ack); keeping it off `db` protects PostHog's transactional writes.
+  - hostname: cyclotrondb
+    type: postgresql@18
+    mode: NON_HA
+    priority: 10
+
   - hostname: clickhouse
     type: clickhouse@25.3
     # HA mandatory: PostHog issues ON CLUSTER DDL against the `zerops` cluster, which only
@@ -99,4 +106,50 @@ services:
       maxRam: 4
       minCpuCores: 1
       maxCpu: 4
+    priority: 5
+
+  # ingestion-v2 — the main event-ingestion path (Kafka → enrich → ClickHouse). Split out so it
+  # can scale independently of CDP / feature-flag work on the default `pluginserver`.
+  - hostname: ingestion
+    type: ubuntu/nodejs@24
+    buildFromGit: https://github.com/fxck/recipe-posthog
+    zeropsSetup: ingestion
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 1
+      maxRam: 4
+      minCpuCores: 1
+      maxCpu: 4
+    priority: 5
+
+  # recordings-blob-ingestion-v2 — pulls session-replay blobs from Kafka into object storage.
+  # High-throughput path, isolated for the same reason as `ingestion`.
+  - hostname: recordings
+    type: ubuntu/nodejs@24
+    buildFromGit: https://github.com/fxck/recipe-posthog
+    zeropsSetup: recordings
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 1
+      maxRam: 4
+      minCpuCores: 1
+      maxCpu: 4
+    priority: 5
+
+  # cdp-cyclotron-worker — drains the Cyclotron job queue (hog-function destinations with retries).
+  # Needs CYCLOTRON_NODE_DATABASE_URL pointed at cyclotrondb; the worker won't usefully fire
+  # without the schema applied by utils/cyclotron-migrations.sh first.
+  - hostname: cyclotron
+    type: ubuntu/nodejs@24
+    buildFromGit: https://github.com/fxck/recipe-posthog
+    zeropsSetup: cyclotron
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 1
+      maxRam: 2
+      minCpuCores: 1
+      maxCpu: 2
     priority: 5

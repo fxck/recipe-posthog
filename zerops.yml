@@ -228,3 +228,208 @@ zerops:
         POSTHOG_SKIP_MIGRATION_CHECKS: '1'
         NO_RESTART_LOOP: '1'
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js
+
+  # ── ingestion ─────────────────────────────────────────────────────────────────
+  # Dedicated ingestion-v2 plugin-server. Cloud runs this as a separate pod for the same
+  # reason — it's the hot path (Kafka → enrich → ClickHouse) and shouldn't share a process
+  # with CDP / feature-flag work.
+  - setup: ingestion
+    build:
+      base: ubuntu/nodejs@24
+      deployFiles:
+        - utils
+    run:
+      base: ubuntu/nodejs@24
+      prepareCommands:
+        - bash utils/init.sh pluginserver
+      envVariables:
+        PLUGIN_SERVER_MODE: ingestion-v2
+        DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
+        POSTHOG_POSTGRES_HOST: ${db_hostname}
+        POSTHOG_POSTGRES_PORT: ${db_port}
+        POSTHOG_POSTGRES_NAME: ${db_dbName}
+        POSTHOG_POSTGRES_USER: ${db_user}
+        POSTHOG_POSTGRES_PASSWORD: ${db_password}
+        CLICKHOUSE_HOST: ${clickhouse_hostname}
+        CLICKHOUSE_DATABASE: posthog
+        CLICKHOUSE_USER: ${clickhouse_superUser}
+        CLICKHOUSE_PASSWORD: ${clickhouse_superUserPassword}
+        CLICKHOUSE_HTTP_URL: http://${clickhouse_hostname}:${clickhouse_portHttp}
+        CLICKHOUSE_SECURE: '0'
+        CLICKHOUSE_VERIFY: '0'
+        CLICKHOUSE_CLUSTER: zerops
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_URL: kafka://${kafka_hostname}:${kafka_port}
+        KAFKA_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USER: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        KAFKA_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_security_protocol: sasl_plaintext
+        KAFKA_CONSUMER_sasl_mechanism: PLAIN
+        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
+        KAFKA_CONSUMER_sasl_username: ${kafka_user}
+        KAFKA_CONSUMER_sasl_password: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_WARPSTREAM_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_WARPSTREAM_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_WARPSTREAM_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_WARPSTREAM_PRODUCER_sasl_password: ${kafka_password}
+        CDP_REDIS_HOST: ${valkey_connectionString}
+        OBJECT_STORAGE_ENABLED: '1'
+        OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
+        OBJECT_STORAGE_BUCKET: ${storage_bucketName}
+        OBJECT_STORAGE_ACCESS_KEY_ID: ${storage_accessKeyId}
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: ${storage_secretAccessKey}
+        NODE_ENV: production
+        SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
+        POSTHOG_SKIP_MIGRATION_CHECKS: '1'
+        NO_RESTART_LOOP: '1'
+      start: cd /opt/posthog/code/nodejs && exec node dist/index.js
+
+  # ── recordings ────────────────────────────────────────────────────────────────
+  # Session-replay blob ingestion. Pulls replay chunks from Kafka into object storage.
+  # High-throughput; the same isolation rationale as `ingestion`.
+  - setup: recordings
+    build:
+      base: ubuntu/nodejs@24
+      deployFiles:
+        - utils
+    run:
+      base: ubuntu/nodejs@24
+      prepareCommands:
+        - bash utils/init.sh pluginserver
+      envVariables:
+        PLUGIN_SERVER_MODE: recordings-blob-ingestion-v2
+        DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
+        POSTHOG_POSTGRES_HOST: ${db_hostname}
+        POSTHOG_POSTGRES_PORT: ${db_port}
+        POSTHOG_POSTGRES_NAME: ${db_dbName}
+        POSTHOG_POSTGRES_USER: ${db_user}
+        POSTHOG_POSTGRES_PASSWORD: ${db_password}
+        CLICKHOUSE_HOST: ${clickhouse_hostname}
+        CLICKHOUSE_DATABASE: posthog
+        CLICKHOUSE_USER: ${clickhouse_superUser}
+        CLICKHOUSE_PASSWORD: ${clickhouse_superUserPassword}
+        CLICKHOUSE_HTTP_URL: http://${clickhouse_hostname}:${clickhouse_portHttp}
+        CLICKHOUSE_SECURE: '0'
+        CLICKHOUSE_VERIFY: '0'
+        CLICKHOUSE_CLUSTER: zerops
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_URL: kafka://${kafka_hostname}:${kafka_port}
+        KAFKA_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USER: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        KAFKA_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_security_protocol: sasl_plaintext
+        KAFKA_CONSUMER_sasl_mechanism: PLAIN
+        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
+        KAFKA_CONSUMER_sasl_username: ${kafka_user}
+        KAFKA_CONSUMER_sasl_password: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
+        # session-recording-blob consumer reads its own redis pool
+        SESSION_RECORDING_API_REDIS_HOST: ${valkey_connectionString}
+        CDP_REDIS_HOST: ${valkey_connectionString}
+        OBJECT_STORAGE_ENABLED: '1'
+        OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
+        OBJECT_STORAGE_BUCKET: ${storage_bucketName}
+        OBJECT_STORAGE_ACCESS_KEY_ID: ${storage_accessKeyId}
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: ${storage_secretAccessKey}
+        NODE_ENV: production
+        SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
+        POSTHOG_SKIP_MIGRATION_CHECKS: '1'
+        NO_RESTART_LOOP: '1'
+      start: cd /opt/posthog/code/nodejs && exec node dist/index.js
+
+  # ── cyclotron ─────────────────────────────────────────────────────────────────
+  # cdp-cyclotron-worker — drains the Cyclotron job queue for hog-function destinations
+  # (Slack/webhook/email "destinations" with retry semantics). Without this service, immediate-
+  # fire destinations work via the Kafka path but retries and delayed jobs are dropped.
+  - setup: cyclotron
+    build:
+      base: ubuntu/nodejs@24
+      deployFiles:
+        - utils
+    run:
+      base: ubuntu/nodejs@24
+      prepareCommands:
+        - bash utils/init.sh pluginserver
+        # psql for the migration step (cyclotron's SQL isn't bundled in the posthog-node image)
+        - sudo apt-get install -y --no-install-recommends postgresql-client
+      envVariables:
+        PLUGIN_SERVER_MODE: cdp-cyclotron-worker
+        # Cyclotron's job queue lives in a dedicated Postgres; URL form because sqlx expects it
+        CYCLOTRON_NODE_DATABASE_URL: postgres://${cyclotrondb_user}:${cyclotrondb_password}@cyclotrondb:5432/${cyclotrondb_dbName}
+        DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
+        POSTHOG_POSTGRES_HOST: ${db_hostname}
+        POSTHOG_POSTGRES_PORT: ${db_port}
+        POSTHOG_POSTGRES_NAME: ${db_dbName}
+        POSTHOG_POSTGRES_USER: ${db_user}
+        POSTHOG_POSTGRES_PASSWORD: ${db_password}
+        CLICKHOUSE_HOST: ${clickhouse_hostname}
+        CLICKHOUSE_DATABASE: posthog
+        CLICKHOUSE_USER: ${clickhouse_superUser}
+        CLICKHOUSE_PASSWORD: ${clickhouse_superUserPassword}
+        CLICKHOUSE_HTTP_URL: http://${clickhouse_hostname}:${clickhouse_portHttp}
+        CLICKHOUSE_SECURE: '0'
+        CLICKHOUSE_VERIFY: '0'
+        CLICKHOUSE_CLUSTER: zerops
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_URL: kafka://${kafka_hostname}:${kafka_port}
+        KAFKA_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USER: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        KAFKA_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_security_protocol: sasl_plaintext
+        KAFKA_CONSUMER_sasl_mechanism: PLAIN
+        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
+        KAFKA_CONSUMER_sasl_username: ${kafka_user}
+        KAFKA_CONSUMER_sasl_password: ${kafka_password}
+        KAFKA_CDP_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_CDP_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_CDP_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_CDP_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_WAREHOUSE_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_WAREHOUSE_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_WAREHOUSE_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_WAREHOUSE_PRODUCER_sasl_password: ${kafka_password}
+        CDP_REDIS_HOST: ${valkey_connectionString}
+        LOGS_REDIS_HOST: ${valkey_connectionString}
+        TRACES_REDIS_HOST: ${valkey_connectionString}
+        OBJECT_STORAGE_ENABLED: '1'
+        OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
+        OBJECT_STORAGE_BUCKET: ${storage_bucketName}
+        OBJECT_STORAGE_ACCESS_KEY_ID: ${storage_accessKeyId}
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: ${storage_secretAccessKey}
+        NODE_ENV: production
+        SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
+        POSTHOG_SKIP_MIGRATION_CHECKS: '1'
+        NO_RESTART_LOOP: '1'
+      initCommands:
+        # Apply Cyclotron's sqlx migrations before the worker tries to read from the queue
+        - zsc execOnce cyclotron-migrations --retryUntilSuccessful -- bash utils/cyclotron-migrations.sh
+      start: cd /opt/posthog/code/nodejs && exec node dist/index.js
