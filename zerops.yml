@@ -196,41 +196,38 @@ zerops:
         KAFKA_SASL_MECHANISM: PLAIN
         KAFKA_SASL_USER: ${kafka_user}
         KAFKA_SASL_PASSWORD: ${kafka_password}
-        KAFKA_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_PRODUCER_sasl_password: ${kafka_password}
-        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
-        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
-        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        # UPPERCASE satisfies both code paths: ingestion-v2's KafkaProducerRegistry reads explicit
+        # UPPERCASE env names (PRODUCER_CONFIG_MAP), and the legacy parseEnvToRdkafkaConfig path
+        # lowercases the suffix after the prefix-decode, so UPPERCASE works there too. Platform
+        # API treats env var keys as case-insensitive for uniqueness, so we can only ship one.
         KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
         KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
         KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
         KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
-        KAFKA_CONSUMER_security_protocol: sasl_plaintext
-        KAFKA_CONSUMER_sasl_mechanism: PLAIN
+        KAFKA_CONSUMER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_CONSUMER_SASL_MECHANISM: PLAIN
         # dist/kafka/admin.js reads `sasl.mechanisms` (plural alias) by name when building the
         # AdminClient — the singular form above doesn't reach it. Topic-ensure fails with
         # `Local: Erroneous state` from librdkafka without the plural alias also set.
-        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
-        KAFKA_CONSUMER_sasl_username: ${kafka_user}
-        KAFKA_CONSUMER_sasl_password: ${kafka_password}
-        KAFKA_CDP_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_CDP_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_CDP_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_CDP_PRODUCER_sasl_password: ${kafka_password}
-        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
-        KAFKA_WARPSTREAM_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_WARPSTREAM_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_WARPSTREAM_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_WARPSTREAM_PRODUCER_sasl_password: ${kafka_password}
-        KAFKA_WAREHOUSE_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_WAREHOUSE_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_WAREHOUSE_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_WAREHOUSE_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_SASL_MECHANISMS: PLAIN
+        KAFKA_CONSUMER_SASL_USERNAME: ${kafka_user}
+        KAFKA_CONSUMER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_CDP_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_CDP_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_CDP_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_CDP_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_METRICS_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_WARPSTREAM_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_WARPSTREAM_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_WARPSTREAM_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_WARPSTREAM_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_WAREHOUSE_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_WAREHOUSE_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_WAREHOUSE_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_WAREHOUSE_PRODUCER_SASL_PASSWORD: ${kafka_password}
         # CDP/logs/traces/session-recording Redis pools each default to 127.0.0.1. ioredis treats
         # a bare hostname as an unparseable URL and silently falls back to localhost, so the
         # full redis:// URL form is required, not just the hostname.
@@ -288,30 +285,27 @@ zerops:
         KAFKA_SASL_MECHANISM: PLAIN
         KAFKA_SASL_USER: ${kafka_user}
         KAFKA_SASL_PASSWORD: ${kafka_password}
-        KAFKA_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_PRODUCER_sasl_password: ${kafka_password}
-        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
-        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
-        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        # UPPERCASE satisfies both code paths: ingestion-v2's KafkaProducerRegistry reads explicit
+        # UPPERCASE env names (PRODUCER_CONFIG_MAP), and the legacy parseEnvToRdkafkaConfig path
+        # lowercases the suffix after the prefix-decode, so UPPERCASE works there too. Platform
+        # API treats env var keys as case-insensitive for uniqueness, so we can only ship one.
         KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
         KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
         KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
         KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
-        KAFKA_CONSUMER_security_protocol: sasl_plaintext
-        KAFKA_CONSUMER_sasl_mechanism: PLAIN
-        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
-        KAFKA_CONSUMER_sasl_username: ${kafka_user}
-        KAFKA_CONSUMER_sasl_password: ${kafka_password}
-        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
-        KAFKA_WARPSTREAM_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_WARPSTREAM_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_WARPSTREAM_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_WARPSTREAM_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_CONSUMER_SASL_MECHANISM: PLAIN
+        KAFKA_CONSUMER_SASL_MECHANISMS: PLAIN
+        KAFKA_CONSUMER_SASL_USERNAME: ${kafka_user}
+        KAFKA_CONSUMER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_METRICS_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_WARPSTREAM_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_WARPSTREAM_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_WARPSTREAM_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_WARPSTREAM_PRODUCER_SASL_PASSWORD: ${kafka_password}
         CDP_REDIS_HOST: ${valkey_connectionString}
         OBJECT_STORAGE_ENABLED: '1'
         OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
@@ -362,26 +356,23 @@ zerops:
         KAFKA_SASL_MECHANISM: PLAIN
         KAFKA_SASL_USER: ${kafka_user}
         KAFKA_SASL_PASSWORD: ${kafka_password}
-        KAFKA_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_PRODUCER_sasl_password: ${kafka_password}
-        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
-        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
-        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        # UPPERCASE satisfies both code paths: ingestion-v2's KafkaProducerRegistry reads explicit
+        # UPPERCASE env names (PRODUCER_CONFIG_MAP), and the legacy parseEnvToRdkafkaConfig path
+        # lowercases the suffix after the prefix-decode, so UPPERCASE works there too. Platform
+        # API treats env var keys as case-insensitive for uniqueness, so we can only ship one.
         KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
         KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
         KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
         KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
-        KAFKA_CONSUMER_security_protocol: sasl_plaintext
-        KAFKA_CONSUMER_sasl_mechanism: PLAIN
-        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
-        KAFKA_CONSUMER_sasl_username: ${kafka_user}
-        KAFKA_CONSUMER_sasl_password: ${kafka_password}
-        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_CONSUMER_SASL_MECHANISM: PLAIN
+        KAFKA_CONSUMER_SASL_MECHANISMS: PLAIN
+        KAFKA_CONSUMER_SASL_USERNAME: ${kafka_user}
+        KAFKA_CONSUMER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_METRICS_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_SASL_PASSWORD: ${kafka_password}
         # session-recording-blob consumer reads its own redis pool
         SESSION_RECORDING_API_REDIS_HOST: ${valkey_connectionString}
         CDP_REDIS_HOST: ${valkey_connectionString}
@@ -439,34 +430,31 @@ zerops:
         KAFKA_SASL_MECHANISM: PLAIN
         KAFKA_SASL_USER: ${kafka_user}
         KAFKA_SASL_PASSWORD: ${kafka_password}
-        KAFKA_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_PRODUCER_sasl_password: ${kafka_password}
-        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
-        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
-        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        # UPPERCASE satisfies both code paths: ingestion-v2's KafkaProducerRegistry reads explicit
+        # UPPERCASE env names (PRODUCER_CONFIG_MAP), and the legacy parseEnvToRdkafkaConfig path
+        # lowercases the suffix after the prefix-decode, so UPPERCASE works there too. Platform
+        # API treats env var keys as case-insensitive for uniqueness, so we can only ship one.
         KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
         KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
         KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
         KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
-        KAFKA_CONSUMER_security_protocol: sasl_plaintext
-        KAFKA_CONSUMER_sasl_mechanism: PLAIN
-        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
-        KAFKA_CONSUMER_sasl_username: ${kafka_user}
-        KAFKA_CONSUMER_sasl_password: ${kafka_password}
-        KAFKA_CDP_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_CDP_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_CDP_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_CDP_PRODUCER_sasl_password: ${kafka_password}
-        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
-        KAFKA_WAREHOUSE_PRODUCER_security_protocol: sasl_plaintext
-        KAFKA_WAREHOUSE_PRODUCER_sasl_mechanism: PLAIN
-        KAFKA_WAREHOUSE_PRODUCER_sasl_username: ${kafka_user}
-        KAFKA_WAREHOUSE_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_CONSUMER_SASL_MECHANISM: PLAIN
+        KAFKA_CONSUMER_SASL_MECHANISMS: PLAIN
+        KAFKA_CONSUMER_SASL_USERNAME: ${kafka_user}
+        KAFKA_CONSUMER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_CDP_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_CDP_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_CDP_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_CDP_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_METRICS_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        KAFKA_WAREHOUSE_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_WAREHOUSE_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_WAREHOUSE_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_WAREHOUSE_PRODUCER_SASL_PASSWORD: ${kafka_password}
         CDP_REDIS_HOST: ${valkey_connectionString}
         LOGS_REDIS_HOST: ${valkey_connectionString}
         TRACES_REDIS_HOST: ${valkey_connectionString}
