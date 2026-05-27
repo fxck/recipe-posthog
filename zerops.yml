@@ -200,6 +200,13 @@ zerops:
         KAFKA_PRODUCER_sasl_mechanism: PLAIN
         KAFKA_PRODUCER_sasl_username: ${kafka_user}
         KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
+        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
+        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
+        KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
         KAFKA_CONSUMER_security_protocol: sasl_plaintext
         KAFKA_CONSUMER_sasl_mechanism: PLAIN
         # dist/kafka/admin.js reads `sasl.mechanisms` (plural alias) by name when building the
@@ -285,6 +292,13 @@ zerops:
         KAFKA_PRODUCER_sasl_mechanism: PLAIN
         KAFKA_PRODUCER_sasl_username: ${kafka_user}
         KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
+        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
+        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
+        KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
         KAFKA_CONSUMER_security_protocol: sasl_plaintext
         KAFKA_CONSUMER_sasl_mechanism: PLAIN
         KAFKA_CONSUMER_sasl_mechanisms: PLAIN
@@ -352,6 +366,13 @@ zerops:
         KAFKA_PRODUCER_sasl_mechanism: PLAIN
         KAFKA_PRODUCER_sasl_username: ${kafka_user}
         KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
+        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
+        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
+        KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
         KAFKA_CONSUMER_security_protocol: sasl_plaintext
         KAFKA_CONSUMER_sasl_mechanism: PLAIN
         KAFKA_CONSUMER_sasl_mechanisms: PLAIN
@@ -422,6 +443,13 @@ zerops:
         KAFKA_PRODUCER_sasl_mechanism: PLAIN
         KAFKA_PRODUCER_sasl_username: ${kafka_user}
         KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        # ingestion-v2's KafkaProducerRegistry reads explicit UPPERCASE env names (different scheme
+        # from the legacy producers above which decode the prefix via parseEnvToRdkafkaConfig).
+        # Linux env vars are case-sensitive, so both naming variants need to be set.
+        KAFKA_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_PRODUCER_SASL_MECHANISMS: PLAIN
+        KAFKA_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_PRODUCER_SASL_PASSWORD: ${kafka_password}
         KAFKA_CONSUMER_security_protocol: sasl_plaintext
         KAFKA_CONSUMER_sasl_mechanism: PLAIN
         KAFKA_CONSUMER_sasl_mechanisms: PLAIN
