@@ -115,6 +115,91 @@ If you don't need the throughput, you can ignore `capture` entirely and point `a
 
 `web` and `worker` are wired to send through the bundled Mailpit (plain SMTP on `mailpit:1025`, no auth, no TLS). Open Mailpit's subdomain to see every email PostHog sends — alerts, weekly digests, password resets, invites. To use a real provider instead, override `EMAIL_HOST` + `EMAIL_PORT` + `EMAIL_HOST_USER` + `EMAIL_HOST_PASSWORD` + `EMAIL_USE_TLS` as service-level envs on `web` and `worker` from the Zerops dashboard.
 
+## Honest comparison
+
+### vs the hobby `docker-compose.hobby.yml`
+
+Hobby is a single VM running everything via Docker. Faster to spin up, cheaper at low volume, but a single SPOF across Postgres + ClickHouse + Kafka + the app — and ClickHouse is single-node so you can't even reproduce the `ON CLUSTER` semantics PostHog's migrations assume. Ours splits every dependency into a managed service with backups, runs ClickHouse HA (3-node + Keeper), and autoscales runtime containers horizontally + vertically. **Crossover ≈100k events/month**: below that, hobby is fine and ours is overkill. Above it, hobby starts hitting the single-VM ceiling on disk I/O and partition rebalancing — ours just adds containers.
+
+### vs the official Helm chart ([`PostHog/charts-clickhouse`](https://github.com/PostHog/charts-clickhouse))
+
+The Helm chart is the supported self-host path. Comparing template-by-template against [`charts/posthog/templates/`](https://github.com/PostHog/charts-clickhouse/tree/main/charts/posthog/templates):
+
+**1:1 mappings** — our 7 runtime services cover the chart's main Deployments:
+
+| Helm template | Our service |
+|---|---|
+| `web-deployment.yaml` | `web` |
+| `worker-deployment.yaml` | `worker` |
+| `plugins-deployment.yaml` | `pluginserver` |
+| `plugins-ingestion-deployment.yaml` + `plugins-analytics-ingestion-deployment.yaml` + `plugins-ingestion-overflow-deployment.yaml` | `ingestion` (chart still splits analytics vs overflow lanes; we collapse) |
+| `recordings-blob-ingestion-deployment.yaml` | `recordings` |
+| `plugins-async-deployment.yaml` | `cyclotron` (chart name predates the rename) |
+| `events-deployment.yaml` + `recordings-deployment.yaml` + `decide-deployment.yaml` | `capture` — the chart still routes these through Django; we leapfrog with capture-rs |
+
+**Missing — functional gaps that disable features**
+
+| Helm template / service | What breaks without it |
+|---|---|
+| [`temporal-py-worker-deployment.yaml`](https://github.com/PostHog/charts-clickhouse/blob/main/charts/posthog/templates/temporal-py-worker-deployment.yaml) (+ external Temporal cluster) | **Batch exports** to BigQuery / Snowflake / S3 / Redshift / Postgres, and **data-warehouse source syncs**. Hog functions cover most realtime destinations; batch and DWH paths silently never fire. |
+| `plugins-exports-deployment.yaml` | **Legacy plugin-based exports** (old destinations using plugin-server `exports` mode). |
+| `plugins-jobs-deployment.yaml` | **Plugin job runner** — "Export historical events", retroactive backfills, similar long-running plugin jobs. |
+| `plugins-scheduler-deployment.yaml` | **Plugin scheduled tasks** (`runEveryMinute` / `runEveryHour` / `runEveryDay` plugin hooks). |
+
+**Missing — Rust/Go services that aren't in the chart yet either** (PostHog Cloud runs these; the public chart hasn't caught up)
+
+| Service | What breaks without it | Severity |
+|---|---|---|
+| `property-defs-rs` | Property/event taxonomy still works via the plugin-server fallback, but with higher Postgres write load. | optimization |
+| `feature-flags-rs` | `/flags` eval handled by Django / plugin-server (slower, higher PG load). | optimization |
+| `log-capture-rs` | **Logs product** (log ingestion endpoint) doesn't work. | functional |
+| `livestream` (Go) | **Activity / live events** view shows nothing. Historical event queries are unaffected. | functional |
+| Error-tracking symbol-set server | Stack traces in the error-tracking product remain unminified. | functional |
+
+**Operational gear Helm bundles that Zerops absorbs into the platform** — `pgbouncer-deployment.yaml` (connection pooling), `clickhouse-operator/` + `clickhouse-backup-cronjob.yaml` (operator + backups), `grafana-*` + `prometheus*` + statsd subcharts (observability), `cert-issuer.yaml` + `ingress.yaml` + `storage_class.yaml` (k8s plumbing), `toolbox-deployment.yaml` (ops shell). None of these have an analogue in ours because Zerops's managed services + platform logs/metrics + automatic TLS replace them.
+
+**Operational gear Helm gives that we don't** — PgBouncer in front of Postgres at very high scale (>thousands of concurrent connections); first-class PostHog community support (the chart is what every PostHog PR is tested against; our patches are off the supported path and have to be re-targeted when upstream churns).
+
+### vs PostHog Cloud
+
+Cloud terminates SASL inside its own private VPC and runs capture-rs there with plaintext to brokers — that's why upstream `capture-rs` ships no SASL support and why we needed the [fxck/posthog-capture](https://github.com/fxck/posthog-capture) fork. Our private VXLAN has the same property: traffic between web ↔ kafka ↔ clickhouse never leaves the project network. So the privacy posture is comparable; the difference is who runs it and at what price.
+
+**Cost model**
+
+Zerops bills resources, not events. Our 10-service deploy at sensible idle sizing:
+
+| Line item | Sizing | ~Monthly |
+|---|---|---|
+| ClickHouse HA (3 nodes, mandatory) | 3 × (2 core / 4 GB / 50 GB) | ~$55 |
+| Postgres `db` | 1 core / 1 GB / 20 GB | ~$6 |
+| Postgres `cyclotrondb` | 0.5 / 0.5 / 10 | ~$3 |
+| Kafka | 1 / 2 / 20 | ~$9 |
+| Valkey | 0.5 / 1 / 5 | ~$4 |
+| Object storage + Mailpit | nominal | ~$2 |
+| 7 runtimes @ idle | 1 core / 1–2 GB each | ~$30 |
+| Project core (Serious plan) | — | $10 |
+| **Idle floor** | | **~$120/mo** |
+
+PostHog Cloud at posted list price: $0.00005 per event after 1M free, $0.005 per recording after 5K free. Comparing at four traffic levels (Cloud free tier included):
+
+| Traffic / month | PostHog Cloud | Zerops | Winner |
+|---|---|---|---|
+| 1M events, 5K recordings | $0 (free tier) | ~$120 | **Cloud** |
+| 10M events, 50K recordings | ~$675 | ~$140 | Zerops by ~$535 |
+| 100M events, 500K recordings | ~$8,300 | ~$600–700 | Zerops by ~$7,500 |
+| 1B events, 5M recordings | ~$60,000+ | ~$2,500–4,000 | Zerops by ~$55,000+ |
+
+**Crossover ≈3–5M events/month** at list prices. Cloud scales linearly per event; Zerops scales sublinearly because most cost is already in the idle floor and the autoscaler only adds capacity for actual load. Above ~10M events/month the gap widens fast — Zerops costs maybe 2–3× idle to handle 100× the throughput.
+
+**Caveats to the math**
+- Cloud's enterprise tier discounts cut the list rate (30–50% at >100M events) — still loses to Zerops at that volume, but by less.
+- Engineer time to maintain the patches (capture-rs fork + `patches.sh` re-targeting when upstream churns) is real. Budget ~2–4 hrs/month at fully-loaded rate — shifts the crossover from ~3M events to closer to ~10M before total cost favors Zerops.
+- Egress: the Serious plan's 3TB covers ~100M events of internal traffic comfortably because most traffic stays inside the private VXLAN. External egress is only dashboard/API traffic.
+
+### Where this recipe actually fits
+
+A narrow but real niche: self-host, own your data, **don't want to run Kubernetes**, accept that you're carrying a Rust fork + ~5 lines of Python sed patches that will need re-targeting on PostHog upstream churn. If you have an existing k8s team and platform, the Helm chart is strictly better for app-level support. If PostHog is the *reason* you'd stand up k8s, this recipe is a faster path with comparable durability.
+
 ## Caveats
 
 - **Pinned to image `:latest`.** First deploy locks in whatever `posthog/posthog:latest` and `posthog/posthog-node:latest` resolved to at build time. Switching versions = redeploy. The patches in `patches.sh` were verified against PostHog ~late 2025; newer versions may move code around and require re-targeting.
