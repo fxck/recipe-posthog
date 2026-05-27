@@ -166,25 +166,27 @@ Cloud terminates SASL inside its own private VPC and runs capture-rs there with 
 
 **Cost model**
 
-Zerops bills resources, not events. Our 10-service deploy at the lowest-viable sizings (see [`zerops-import.yaml`](./zerops-import.yaml) — every runtime has vertical autoscaling enabled so these are floor values, the platform lifts CPU/RAM under load):
+Zerops bills resources, not events. CPU is allocated in whole cores; default `cpuMode: SHARED` overcommits a physical core up to 10× with other tenants at **$0.60/core/month** — bursty performance, ideal for a recipe whose floor sits idle most of the time. Switch any service to `cpuMode: DEDICATED` ($6/core/month, exclusive core) for consistent latency under sustained load. RAM is billed at $3/GB/month, disk at $0.10/GB/month.
 
-| Line item | Floor sizing (autoscales up) | ~Monthly idle |
+Floor sizings (see [`zerops-import.yaml`](./zerops-import.yaml) — vertical autoscaling lifts CPU/RAM up to the listed max under load):
+
+| Line item | Floor → autoscale max | ~Monthly idle |
 |---|---|---|
 | ClickHouse HA (3 nodes, mandatory) | 3 × (2 core / 4 GB / 50 GB) | ~$55 |
 | Postgres `db` | 1 core / 1 GB / 20 GB | ~$6 |
-| Postgres `cyclotrondb` | 0.5 / 0.5 / 10 | ~$3 |
-| Kafka | 1 / 2 / 20 | ~$9 |
-| Valkey | 0.5 / 1 / 5 | ~$4 |
+| Postgres `cyclotrondb` | 1 core / 0.5 GB / 10 GB | ~$4 |
+| Kafka | 1 core / 2 GB / 20 GB | ~$9 |
+| Valkey | 1 core / 1 GB / 5 GB | ~$4 |
 | Object storage + Mailpit | nominal | ~$2 |
-| `web`, `worker` | 1 core / 0.5 GB each → up to 2 / 2 | ~$4 |
-| `pluginserver` (default mode, biggest Node bundle) | 1 core / 0.75 GB → 2 / 2 | ~$3 |
+| `web`, `worker` | 1 core / 0.5 GB each → 2 / 2 | ~$4 |
+| `pluginserver` (biggest Node bundle) | 1 core / 0.75 GB → 2 / 2 | ~$3 |
 | `ingestion`, `recordings` | 1 core / 0.5 GB each → 2 / 2 | ~$4 |
-| `cyclotron` | 0.5 core / 0.5 GB → 1 / 1 | ~$2 |
-| `capture` (Rust, tiny at rest) | 0.5 core / 0.25 GB → 2 / 1 | ~$1 |
+| `cyclotron` | 1 core / 0.5 GB → 2 / 1 | ~$2 |
+| `capture` (Rust, tiny at rest) | 1 core / 0.25 GB → 2 / 1 | ~$1 |
 | Project core (Serious plan) | — | $10 |
 | **Idle floor** | | **~$100/mo** |
 
-Node services cap `maxCpu` at 2 — JavaScript runs on a single event loop, so extra cores only feed the libuv I/O pool, V8 GC threads, and (for ingestion-v2) the Piscina worker pool. Beyond 2 cores per container, horizontal scaling (`maxContainers > 1`) is the right lever, not more vertical CPU. Python services (`web` gunicorn, `worker` Celery) scale linearly with cores up to their worker-count, so they're the same — 2 workers, 2 cores.
+Node services cap `maxCpu: 2` — JavaScript runs on a single event loop, so extra cores only feed the libuv I/O pool, V8 GC threads, and (for ingestion-v2) the Piscina worker pool. Beyond 2 cores per container, horizontal scaling (`maxContainers > 1`) is the right lever, not more vertical CPU. Python services (`web` gunicorn, `worker` Celery) scale linearly with cores up to their worker-count — same cap, same reasoning.
 
 PostHog Cloud at posted list price: $0.00005 per event after 1M free, $0.005 per recording after 5K free. Comparing at four traffic levels (Cloud free tier included):
 
