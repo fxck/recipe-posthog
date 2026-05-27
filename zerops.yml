@@ -433,3 +433,46 @@ zerops:
         # Apply Cyclotron's sqlx migrations before the worker tries to read from the queue
         - zsc execOnce cyclotron-migrations --retryUntilSuccessful -- bash utils/cyclotron-migrations.sh
       start: cd /opt/posthog/code/nodejs && exec node dist/index.js
+
+  # ── capture ───────────────────────────────────────────────────────────────────
+  # PostHog's Rust-based capture binary, built from our SASL-patched fork at fxck/posthog-capture.
+  # Upstream capture-rs has no SASL Kafka support — only TLS or plaintext — so it can't talk to
+  # Zerops's SASL_PLAINTEXT-only listener. The fork adds four optional env vars that propagate
+  # to the rdkafka ClientConfig: KAFKA_SECURITY_PROTOCOL / KAFKA_SASL_MECHANISM / _USERNAME / _PASSWORD.
+  #
+  # Users point PostHog JS at this service's subdomain for capture, web's subdomain for the UI:
+  #   posthog.init('key', { api_host: 'https://capture-...', ui_host: 'https://web-...' })
+  - setup: capture
+    build:
+      base: ubuntu/rust@stable
+      prepareCommands:
+        # rdkafka-sys, aws-lc-sys, openssl-sys all need a real C toolchain + the SASL header
+        - sudo apt-get update
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential cmake pkg-config libssl-dev libsasl2-dev
+      buildCommands:
+        # Cargo workspace lives in rust/; build only the capture binary (other workspace crates
+        # come along as path-dependencies as needed)
+        - cd rust && cargo build --release -p capture
+        - cp rust/target/release/capture ./capture
+      deployFiles:
+        - capture
+    run:
+      base: ubuntu@24.04
+      prepareCommands:
+        # Runtime needs libsasl2 + libssl3 dynamically linked (build had the -dev variants)
+        - sudo apt-get update
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libsasl2-2 libsasl2-modules libssl3
+      envVariables:
+        ADDRESS: 0.0.0.0:3000
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USERNAME: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        CAPTURE_MODE: events
+        RUST_LOG: info
+      ports:
+        - port: 3000
+          httpSupport: true
+      start: ./capture

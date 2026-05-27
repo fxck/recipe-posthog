@@ -153,3 +153,20 @@ services:
       minCpuCores: 1
       maxCpu: 2
     priority: 5
+
+  # capture-rs — high-throughput capture endpoints (events / recordings) built from our SASL-patched
+  # fork of PostHog's rust/ tree. PostHog Cloud uses this binary in front of Django; we expose it as
+  # a separate subdomain so apps point their PostHog JS at api_host: capture-* and ui_host: web-*.
+  - hostname: capture
+    type: ubuntu/rust@stable
+    buildFromGit: https://github.com/fxck/posthog-capture
+    zeropsSetup: capture
+    enableSubdomainAccess: true
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 1
+      maxRam: 4
+      minCpuCores: 1
+      maxCpu: 4
+    priority: 5

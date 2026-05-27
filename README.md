@@ -19,6 +19,7 @@ Self-hosted [PostHog](https://posthog.com) on Zerops — Django web, Celery work
 | `ingestion` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=ingestion-v2` — hot path Kafka → ClickHouse |
 | `recordings` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=recordings-blob-ingestion-v2` — session replay blobs |
 | `cyclotron` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=cdp-cyclotron-worker` — hog-function destination retries |
+| `capture` | ubuntu/rust@stable | high-throughput Rust capture binary (`/e/`, `/i/`, etc.), built from [fxck/posthog-capture](https://github.com/fxck/posthog-capture) |
 
 All three runtimes pull their code from the prebuilt PostHog Docker images (`posthog/posthog:latest` for web/worker, `posthog/posthog-node:latest` for pluginserver) at deploy time, via `crane export` — no `docker build`, no `docker run`, no privileged container needed.
 
@@ -90,11 +91,22 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 
 `INTERNAL_API_SECRET` in particular must match across `web` and `pluginserver`. Defining it at the project level guarantees both runtimes see the same value.
 
-## What about a dedicated capture service?
+## Routing capture vs UI
 
-PostHog Cloud uses a Rust binary (`rust/capture/`) to serve the high-throughput capture endpoints (`/e/`, `/i/`, `/decide/`, `/flags/`) instead of Django. This recipe doesn't include it because **upstream capture-rs has no SASL Kafka support** — its `rust/common/kafka/src/kafka_producer.rs` builds the rdkafka client config from a fixed struct that exposes only TLS, not SASL. Zerops's managed Kafka requires SASL_PLAINTEXT, so capture-rs can't authenticate.
+PostHog Cloud serves the high-throughput capture endpoints (`/e/`, `/i/`, `/decide/`, `/flags/`) from a dedicated Rust binary, not Django. Upstream `capture-rs` has no SASL Kafka support — its rdkafka `ClientConfig` is built from a struct exposing only TLS — so to use it against Zerops's SASL-only Kafka listener we run a small fork at [`fxck/posthog-capture`](https://github.com/fxck/posthog-capture) that adds four optional env vars (`KAFKA_SECURITY_PROTOCOL` / `KAFKA_SASL_MECHANISM` / `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD`) and propagates them to the rdkafka client.
 
-To use it we'd need to fork capture-rs and patch the Kafka client init, then maintain that fork against PostHog upstream. That's out of scope for a deploy recipe. Capture endpoints stay on Django; throughput ceiling is whatever your `web` gunicorn workers can handle (currently `--workers 2`, increase via overriding the start command if you need more).
+The `capture` service builds that fork via `cargo build --release -p capture` on first deploy (~8 min first time, cached after) and exposes the binary on its own subdomain.
+
+Point your PostHog JS at both subdomains:
+
+```js
+posthog.init('your-api-key', {
+  api_host: 'https://capture-<subdomain>.prg1.zerops.app',  // events go here
+  ui_host: 'https://web-<subdomain>.prg1.zerops.app',       // app/dashboard
+})
+```
+
+If you don't need the throughput, you can ignore `capture` entirely and point `api_host` at the `web` subdomain — Django serves the same endpoints, just with whatever ceiling `gunicorn --workers 2` can hold.
 
 ## SMTP / Mailpit
 
