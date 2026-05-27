@@ -373,6 +373,11 @@ zerops:
         KAFKA_METRICS_PRODUCER_SASL_MECHANISM: PLAIN
         KAFKA_METRICS_PRODUCER_SASL_USERNAME: ${kafka_user}
         KAFKA_METRICS_PRODUCER_SASL_PASSWORD: ${kafka_password}
+        # session-replay server creates a second producer in WARPSTREAM mode after the default
+        KAFKA_WARPSTREAM_PRODUCER_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_WARPSTREAM_PRODUCER_SASL_MECHANISM: PLAIN
+        KAFKA_WARPSTREAM_PRODUCER_SASL_USERNAME: ${kafka_user}
+        KAFKA_WARPSTREAM_PRODUCER_SASL_PASSWORD: ${kafka_password}
         # session-recording-blob consumer reads its own redis pool
         SESSION_RECORDING_API_REDIS_HOST: ${valkey_connectionString}
         CDP_REDIS_HOST: ${valkey_connectionString}
