@@ -12,9 +12,13 @@ Self-hosted [PostHog](https://posthog.com) on Zerops — Django web, Celery work
 | `valkey` | valkey@7.2 | cache + plugin-server pub/sub + celery broker/backend |
 | `storage` | object-storage | session replays, exports |
 | `mailpit` | alpine@3.20 ([recipe-mailpit](https://github.com/zeropsio/recipe-mailpit)) | SMTP sink + web inbox on `:8025` |
+| `cyclotrondb` | postgresql@18 | dedicated job-queue database for Cyclotron |
 | `web` | ubuntu/python@3.12 | Django + gunicorn on `:8000` |
 | `worker` | ubuntu/python@3.12 | Celery worker + RedBeat scheduler |
-| `pluginserver` | ubuntu/nodejs@24 | Node CDP / hog-functions on `:6738` |
+| `pluginserver` | ubuntu/nodejs@24 | default Node capability merge — CDP API on `:6738`, feature flag evaluation, logs, error tracking |
+| `ingestion` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=ingestion-v2` — hot path Kafka → ClickHouse |
+| `recordings` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=recordings-blob-ingestion-v2` — session replay blobs |
+| `cyclotron` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=cdp-cyclotron-worker` — hog-function destination retries |
 
 All three runtimes pull their code from the prebuilt PostHog Docker images (`posthog/posthog:latest` for web/worker, `posthog/posthog-node:latest` for pluginserver) at deploy time, via `crane export` — no `docker build`, no `docker run`, no privileged container needed.
 
@@ -86,6 +90,12 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 
 `INTERNAL_API_SECRET` in particular must match across `web` and `pluginserver`. Defining it at the project level guarantees both runtimes see the same value.
 
+## What about a dedicated capture service?
+
+PostHog Cloud uses a Rust binary (`rust/capture/`) to serve the high-throughput capture endpoints (`/e/`, `/i/`, `/decide/`, `/flags/`) instead of Django. This recipe doesn't include it because **upstream capture-rs has no SASL Kafka support** — its `rust/common/kafka/src/kafka_producer.rs` builds the rdkafka client config from a fixed struct that exposes only TLS, not SASL. Zerops's managed Kafka requires SASL_PLAINTEXT, so capture-rs can't authenticate.
+
+To use it we'd need to fork capture-rs and patch the Kafka client init, then maintain that fork against PostHog upstream. That's out of scope for a deploy recipe. Capture endpoints stay on Django; throughput ceiling is whatever your `web` gunicorn workers can handle (currently `--workers 2`, increase via overriding the start command if you need more).
+
 ## SMTP / Mailpit
 
 `web` and `worker` are wired to send through the bundled Mailpit (plain SMTP on `mailpit:1025`, no auth, no TLS). Open Mailpit's subdomain to see every email PostHog sends — alerts, weekly digests, password resets, invites. To use a real provider instead, override `EMAIL_HOST` + `EMAIL_PORT` + `EMAIL_HOST_USER` + `EMAIL_HOST_PASSWORD` + `EMAIL_USE_TLS` as service-level envs on `web` and `worker` from the Zerops dashboard.
@@ -93,8 +103,9 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 ## Caveats
 
 - **Pinned to image `:latest`.** First deploy locks in whatever `posthog/posthog:latest` and `posthog/posthog-node:latest` resolved to at build time. Switching versions = redeploy. The patches in `patches.sh` were verified against PostHog ~late 2025; newer versions may move code around and require re-targeting.
+- **Cyclotron migrations pinned to `master`.** [`utils/cyclotron-migrations.sh`](./utils/cyclotron-migrations.sh) fetches SQL from PostHog's `master` branch. Schema changes upstream require either updating the migration list in the script or accepting drift.
 - **Third-party integrations not wired up.** Slack, Google/GitHub/GitLab OAuth, Hubspot, Salesforce, OpenAI, etc. need their respective `SLACK_*` / `GOOGLE_*` / etc. credentials set as service-level env vars in the Zerops dashboard if you want them.
-- **PostHog Cloud-only features won't work** — Cyclotron-Postgres, certain CDP destinations, async-migration-driven cohorts. The recipe sets `POSTHOG_SKIP_MIGRATION_CHECKS=1` and the worker patch sidesteps the async-migration gate; if you re-enable those, expect breakage.
+- **Async migrations are skipped** (`POSTHOG_SKIP_MIGRATION_CHECKS=1` + the docker-worker-celery patch). PostHog's 10 async migrations target old-version schema reshapes; on a fresh install they're unnecessary, but if you later upgrade PostHog versions and a new required async migration ships, you'll need to run `manage.py run_async_migrations` by hand or temporarily flip the flag.
 - **Persistent data lives in the managed services**, not in the runtime containers. Scaling/restarting the runtimes is safe.
 
 ## License
