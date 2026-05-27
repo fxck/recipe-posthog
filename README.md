@@ -93,7 +93,7 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 ## Caveats
 
 - **Pinned to image `:latest`.** First deploy locks in whatever `posthog/posthog:latest` and `posthog/posthog-node:latest` resolved to at build time. Switching versions = redeploy. The patches in `patches.sh` were verified against PostHog ~late 2025; newer versions may move code around and require re-targeting.
-- **No outbound email or third-party integrations wired up.** Set `EMAIL_*`, `SLACK_*`, etc. as service-level env vars in the Zerops dashboard if you need them.
+- **Third-party integrations not wired up.** Slack, Google/GitHub/GitLab OAuth, Hubspot, Salesforce, OpenAI, etc. need their respective `SLACK_*` / `GOOGLE_*` / etc. credentials set as service-level env vars in the Zerops dashboard if you want them.
 - **PostHog Cloud-only features won't work** — Cyclotron-Postgres, certain CDP destinations, async-migration-driven cohorts. The recipe sets `POSTHOG_SKIP_MIGRATION_CHECKS=1` and the worker patch sidesteps the async-migration gate; if you re-enable those, expect breakage.
 - **Persistent data lives in the managed services**, not in the runtime containers. Scaling/restarting the runtimes is safe.
 
