@@ -1,6 +1,6 @@
 # recipe-posthog
 
-Self-hosted [PostHog](https://posthog.com) on Zerops — Django web, Celery worker, Node CDP/plugin-server, fed by Kafka and backed by Postgres, ClickHouse, Valkey, and S3-compatible storage. **No Docker.** The recipe lifts the official PostHog images via `crane` and runs them directly on Zerops runtime containers.
+Self-hosted [PostHog](https://posthog.com) on Zerops — Django web, Celery worker, four Node plugin-server modes (default CDP, ingestion-v2, recordings-blob, cyclotron-worker), a Rust capture binary, plus Postgres, ClickHouse, Kafka, Valkey, S3 storage, and Mailpit SMTP. **No Docker.** The recipe lifts the official PostHog images via `crane` and runs them directly on Zerops runtime containers.
 
 ## What you get
 
@@ -21,13 +21,13 @@ Self-hosted [PostHog](https://posthog.com) on Zerops — Django web, Celery work
 | `cyclotron` | ubuntu/nodejs@24 | `PLUGIN_SERVER_MODE=cdp-cyclotron-worker` — hog-function destination retries |
 | `capture` | ubuntu/rust@stable | high-throughput Rust capture binary (`/e/`, `/i/`, etc.), built from [fxck/posthog-capture](https://github.com/fxck/posthog-capture) |
 
-All three runtimes pull their code from the prebuilt PostHog Docker images (`posthog/posthog:latest` for web/worker, `posthog/posthog-node:latest` for pluginserver) at deploy time, via `crane export` — no `docker build`, no `docker run`, no privileged container needed.
+The Python and Node runtimes pull their code from the prebuilt PostHog Docker images (`posthog/posthog:latest` for web/worker, `posthog/posthog-node:latest` for the four plugin-server-mode services) at deploy time, via `crane export` — no `docker build`, no `docker run`, no privileged container needed. The capture binary is built from source via [fxck/posthog-capture](https://github.com/fxck/posthog-capture) (a SASL-patched fork of PostHog's `rust/` tree).
 
 ## Deploy
 
-Import this project topology from the Zerops dashboard (Settings → Import project) using [`zerops-import.yaml`](./zerops-import.yaml). Zerops provisions the five managed services and clones this repo into each runtime via `buildFromGit`, then `zerops.yml`'s `run.prepareCommands` runs [`utils/init.sh`](./utils/init.sh) + [`utils/patches.sh`](./utils/patches.sh) to materialize PostHog under `/opt/posthog/`.
+Import this project topology from the Zerops dashboard (Settings → Import project) using [`zerops-import.yaml`](./zerops-import.yaml). Zerops provisions the six managed/utility services and clones this repo into each Node/Python runtime via `buildFromGit`. The recipe's [`utils/init.sh`](./utils/init.sh) + [`utils/patches.sh`](./utils/patches.sh) (shipped via `build.addToRunPrepare`) materialize PostHog under `/opt/posthog/` during `run.prepareCommands`.
 
-First boot takes ~10 minutes (image pull + extraction + ~272 ClickHouse migrations). When `web`'s health check goes green, browse to the assigned subdomain — PostHog's "Validate implementation" wizard should show all checks green.
+First boot takes ~10 minutes for the Python/Node services (image pull + extraction + ~272 ClickHouse migrations) and ~19 minutes for the capture service (cold cargo build). When `web`'s health check goes green, browse to the assigned subdomain — PostHog's "Validate implementation" wizard should show all checks green.
 
 ## ClickHouse must be HA
 
@@ -46,10 +46,11 @@ PostHog assumes a PostHog-Cloud Kubernetes environment. The recipe bridges that 
 - Same `cluster.py` patches as web.
 - `bin/docker-worker-celery` — drop the `SKIP_ASYNC_MIGRATIONS_SETUP=0` override that prevents the worker from booting (it forces `posthog.apps.ready()` into `setup_async_migrations()` which throws on the Cloud-only async migration set).
 
-**Pluginserver (env only — see [`zerops.yml`](./zerops.yml))**
+**Pluginserver / ingestion / recordings / cyclotron (env only — see [`zerops.yml`](./zerops.yml))**
 - `CDP_REDIS_HOST` / `LOGS_REDIS_HOST` / `TRACES_REDIS_HOST` / `SESSION_RECORDING_API_REDIS_HOST` default to `127.0.0.1`. Must be the full `redis://valkey:6379` URL — ioredis treats a bare hostname as an unparseable URL and silently falls back to localhost.
 - Every Kafka producer mode the plugin-server creates reads its own env prefix (`KAFKA_PRODUCER_*`, `KAFKA_METRICS_PRODUCER_*`, `KAFKA_WARPSTREAM_PRODUCER_*`, `KAFKA_WAREHOUSE_PRODUCER_*`, `KAFKA_CDP_PRODUCER_*`). Modes without SASL keys configured yield a plaintext producer that hangs forever retrying idempotence PID acquisition — that blocks `startServices()`'s `Promise.all` and the HTTP server never opens.
-- `KAFKA_CONSUMER_sasl_mechanisms` (plural alias) is required alongside the singular form — `dist/kafka/admin.js` reads the plural key by name when building the AdminClient.
+- Env names use **UPPERCASE** (`KAFKA_PRODUCER_SASL_USERNAME`, not `KAFKA_PRODUCER_sasl_username`). Two code paths read the same prefix: the legacy `parseEnvToRdkafkaConfig` lowercases the suffix after stripping the prefix, and the newer `KafkaProducerRegistry` (used by ingestion-v2 / recordings / error-tracking) reads explicit UPPERCASE names by name. The Zerops platform treats env var keys as case-insensitive for uniqueness within one service, so only one variant can ship — UPPERCASE works for both.
+- `KAFKA_CONSUMER_SASL_MECHANISMS` (plural) is set alongside `KAFKA_CONSUMER_SASL_MECHANISM` (singular). librdkafka accepts either, but `dist/kafka/admin.js` reads the plural form by name when building the AdminClient.
 
 **Web ([`zerops.yml`](./zerops.yml) env)**
 - `CDP_API_URL=http://pluginserver:6738` — PostHog's default is a k8s service DNS name (`ingestion-cdp-api.posthog.svc.cluster.local`) that doesn't resolve outside Kubernetes. The `plugins` preflight probe hits this URL.
@@ -70,17 +71,19 @@ The Django and ClickHouse migrations follow, both also guarded by `execOnce` so 
 ```
 .
 ├── README.md
-├── zerops-import.yaml      # project topology (services + types + buildFromGit refs)
-├── zerops.yml              # 3 setups: web, worker, pluginserver
+├── zerops-import.yaml             # project topology (services + types + buildFromGit refs)
+├── zerops.yml                     # 6 setups: web, worker, pluginserver, ingestion, recordings, cyclotron
+│                                  # (capture's setup lives in fxck/posthog-capture, the fork)
 └── utils/
-    ├── init.sh             # crane export + venv repoint + system libs (parameterized by role)
-    ├── patches.sh          # PostHog source patches (Python services only)
-    └── ch-init.sh          # ClickHouse one-time bootstrap (called from web's initCommands)
+    ├── init.sh                    # crane export + venv repoint + system libs (parameterized by role)
+    ├── patches.sh                 # PostHog Python source patches (web + worker)
+    ├── ch-init.sh                 # ClickHouse one-time bootstrap (called from web's initCommands)
+    └── cyclotron-migrations.sh    # Cyclotron sqlx schema bootstrap (called from cyclotron's initCommands)
 ```
 
 ## Secrets
 
-Four project-level secrets are auto-generated once at import (see [`zerops-import.yaml`](./zerops-import.yaml#L13)) and shared across all three runtimes:
+Four project-level secrets are auto-generated once at import (see [`zerops-import.yaml`](./zerops-import.yaml)) and shared across every runtime:
 
 | Env | Purpose | PostHog default (insecure) |
 |---|---|---|
@@ -89,13 +92,13 @@ Four project-level secrets are auto-generated once at import (see [`zerops-impor
 | `SALT_KEY` | Older symmetric salt for `encrypted_fields` helper | `0123456789abcdefghijklmnopqrstuvwxyz` |
 | `INTERNAL_API_SECRET` | Django ↔ plugin-server internal-API auth | `posthog123` (LOCAL_DEV literal) |
 
-`INTERNAL_API_SECRET` in particular must match across `web` and `pluginserver`. Defining it at the project level guarantees both runtimes see the same value.
+`INTERNAL_API_SECRET` in particular must match across `web` and all four plugin-server-mode services. Defining it at the project level guarantees every runtime sees the same value.
 
 ## Routing capture vs UI
 
-PostHog Cloud serves the high-throughput capture endpoints (`/e/`, `/i/`, `/decide/`, `/flags/`) from a dedicated Rust binary, not Django. Upstream `capture-rs` has no SASL Kafka support — its rdkafka `ClientConfig` is built from a struct exposing only TLS — so to use it against Zerops's SASL-only Kafka listener we run a small fork at [`fxck/posthog-capture`](https://github.com/fxck/posthog-capture) that adds four optional env vars (`KAFKA_SECURITY_PROTOCOL` / `KAFKA_SASL_MECHANISM` / `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD`) and propagates them to the rdkafka client.
+PostHog Cloud serves the high-throughput capture endpoints (`/e/`, `/i/`, `/decide/`, `/flags/`) from a dedicated Rust binary, not Django. Upstream `capture-rs` has no SASL Kafka support — its rdkafka `ClientConfig` is built from a struct exposing only TLS — so to use it against Zerops's SASL-only Kafka listener we run a small fork at [`fxck/posthog-capture`](https://github.com/fxck/posthog-capture) that adds four optional env vars (`KAFKA_SECURITY_PROTOCOL` / `KAFKA_SASL_MECHANISM` / `KAFKA_SASL_USERNAME` / `KAFKA_SASL_PASSWORD`) and propagates them to the rdkafka client. The fork's own `zerops.yml` carries the `capture` setup block.
 
-The `capture` service builds that fork via `cargo build --release -p capture` on first deploy (~8 min first time, cached after) and exposes the binary on its own subdomain.
+The `capture` service builds that fork via `cargo build --release -p capture` on first deploy (~19 min first time, cached on subsequent builds via `build.cache` on the cargo target dir + registry) and exposes the binary on its own subdomain.
 
 Point your PostHog JS at both subdomains:
 
