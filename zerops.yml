@@ -414,6 +414,11 @@ zerops:
         PLUGIN_SERVER_MODE: cdp-cyclotron-worker
         # Cyclotron's job queue lives in a dedicated Postgres; URL form because sqlx expects it
         CYCLOTRON_NODE_DATABASE_URL: postgres://${cyclotrondb_user}:${cyclotrondb_password}@cyclotrondb:5432/${cyclotrondb_dbName}
+        # Same credentials exposed as discrete envs for utils/cyclotron-migrations.sh — Zerops only
+        # substitutes ${cyclotrondb_*} into other values, the keys themselves aren't in the container env
+        CYCLOTRONDB_USER: ${cyclotrondb_user}
+        CYCLOTRONDB_PASSWORD: ${cyclotrondb_password}
+        CYCLOTRONDB_DBNAME: ${cyclotrondb_dbName}
         DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
         POSTHOG_POSTGRES_HOST: ${db_hostname}
         POSTHOG_POSTGRES_PORT: ${db_port}

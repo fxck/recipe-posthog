@@ -9,9 +9,9 @@
 # migrations are run inside a single transaction with `IF NOT EXISTS` guards.
 set -euo pipefail
 
-: "${cyclotrondb_user:?}"
-: "${cyclotrondb_password:?}"
-: "${cyclotrondb_dbName:?}"
+: "${CYCLOTRONDB_USER:?}"
+: "${CYCLOTRONDB_PASSWORD:?}"
+: "${CYCLOTRONDB_DBNAME:?}"
 
 # Pin to master — PostHog's image is :latest, this keeps the moving parts aligned
 BASE="https://raw.githubusercontent.com/PostHog/posthog/master/rust/cyclotron-core/migrations"
@@ -23,8 +23,8 @@ MIGRATIONS=(
   20260121092625_add_canceled_job_state.sql
 )
 
-export PGPASSWORD="$cyclotrondb_password"
-PSQL="psql -h cyclotrondb -p 5432 -U $cyclotrondb_user -d $cyclotrondb_dbName -v ON_ERROR_STOP=1"
+export PGPASSWORD="$CYCLOTRONDB_PASSWORD"
+PSQL="psql -h cyclotrondb -p 5432 -U $CYCLOTRONDB_USER -d $CYCLOTRONDB_DBNAME -v ON_ERROR_STOP=1"
 
 # Track applied migrations in a tiny table so re-runs are idempotent
 $PSQL -c "CREATE TABLE IF NOT EXISTS _zerops_recipe_applied (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
