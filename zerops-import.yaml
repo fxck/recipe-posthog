@@ -1,0 +1,83 @@
+project:
+  name: posthog
+  description: |
+    Self-hosted PostHog on Zerops native managed services. No Docker.
+    Lifts the official PostHog images (posthog/posthog + posthog/posthog-node) via crane
+    and runs Django + Celery + the Node plugin-server directly on Zerops runtimes.
+  tags:
+    - posthog
+    - analytics
+    - recipe
+
+services:
+  # Managed dependencies — order doesn't matter, Zerops resolves provisioning order.
+
+  - hostname: db
+    type: postgresql@18
+    mode: NON_HA
+    priority: 10
+
+  - hostname: clickhouse
+    type: clickhouse@25.3
+    # HA mandatory: PostHog issues ON CLUSTER DDL against the `zerops` cluster, which only
+    # exists in HA mode along with Keeper + the macros PostHog's migrations reference.
+    mode: HA
+    priority: 10
+
+  - hostname: kafka
+    type: kafka@3.9
+    mode: NON_HA
+    priority: 10
+
+  - hostname: valkey
+    type: valkey@7.2
+    mode: NON_HA
+    priority: 10
+
+  - hostname: storage
+    type: object-storage
+    objectStorageSize: 10
+    priority: 10
+
+  # Runtime services — buildFromGit clones this repo into /var/www on the build container,
+  # zerops.yml's deployFiles ships utils/ to runtime, run.prepareCommands lifts the image.
+
+  - hostname: web
+    type: ubuntu/python@3.12
+    buildFromGit: https://github.com/fxck/recipe-posthog
+    zeropsSetup: web
+    enableSubdomainAccess: true
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 1
+      maxRam: 4
+      minCpuCores: 1
+      maxCpu: 4
+    priority: 5
+
+  - hostname: worker
+    type: ubuntu/python@3.12
+    buildFromGit: https://github.com/fxck/recipe-posthog
+    zeropsSetup: worker
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 2
+      maxRam: 8
+      minCpuCores: 1
+      maxCpu: 4
+    priority: 5
+
+  - hostname: pluginserver
+    type: ubuntu/nodejs@24
+    buildFromGit: https://github.com/fxck/recipe-posthog
+    zeropsSetup: pluginserver
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      minRam: 1
+      maxRam: 4
+      minCpuCores: 1
+      maxCpu: 4
+    priority: 5

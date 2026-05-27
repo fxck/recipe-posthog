@@ -1,0 +1,218 @@
+zerops:
+  # ── web ───────────────────────────────────────────────────────────────────────
+  # Django + gunicorn. Owns the HTTP wizard, Postgres + ClickHouse migrations
+  # (initCommands), and the `/_preflight/` health surface the dashboard reads.
+  - setup: web
+    build:
+      base: ubuntu/python@3.12
+      deployFiles:
+        - utils
+    run:
+      base: ubuntu/python@3.12
+      prepareCommands:
+        - bash utils/init.sh web
+        - bash utils/patches.sh web
+      envVariables:
+        DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
+        POSTHOG_POSTGRES_HOST: ${db_hostname}
+        POSTHOG_POSTGRES_PORT: ${db_port}
+        POSTHOG_POSTGRES_NAME: ${db_dbName}
+        POSTHOG_POSTGRES_USER: ${db_user}
+        POSTHOG_POSTGRES_PASSWORD: ${db_password}
+        # super user — cross-shard DDL on the `zerops` cluster needs it
+        CLICKHOUSE_HOST: ${clickhouse_hostname}
+        CLICKHOUSE_DATABASE: posthog
+        CLICKHOUSE_USER: ${clickhouse_superUser}
+        CLICKHOUSE_PASSWORD: ${clickhouse_superUserPassword}
+        CLICKHOUSE_HTTP_URL: http://${clickhouse_hostname}:${clickhouse_portHttp}
+        CLICKHOUSE_SECURE: '0'
+        CLICKHOUSE_VERIFY: '0'
+        # PostHog references many cluster names; Zerops provides one (`zerops`) — fan all of them at it
+        CLICKHOUSE_CLUSTER: zerops
+        CLICKHOUSE_MIGRATIONS_CLUSTER: zerops
+        CLICKHOUSE_SATELLITE_CLUSTERS: zerops
+        CLICKHOUSE_SINGLE_SHARD_CLUSTER: zerops
+        CLICKHOUSE_WRITABLE_CLUSTER: zerops
+        CLICKHOUSE_PRIMARY_REPLICA_CLUSTER: zerops
+        CLICKHOUSE_AUX_CLUSTER: zerops
+        CLICKHOUSE_AI_EVENTS_CLUSTER: zerops
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_URL: kafka://${kafka_hostname}:${kafka_port}
+        KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USER: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        OBJECT_STORAGE_ENABLED: '1'
+        OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
+        OBJECT_STORAGE_BUCKET: ${storage_bucketName}
+        OBJECT_STORAGE_ACCESS_KEY_ID: ${storage_accessKeyId}
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: ${storage_secretAccessKey}
+        DEBUG: '0'
+        DISABLE_SECURE_SSL_REDIRECT: '1'
+        IS_BEHIND_PROXY: '1'
+        TRUST_ALL_PROXIES: '1'
+        SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
+        PYTHONUNBUFFERED: '1'
+        POSTHOG_SKIP_MIGRATION_CHECKS: '1'
+        DJANGO_SETTINGS_MODULE: posthog.settings
+        # plugins preflight probes CDP_API_URL/_health; default is a k8s DNS name that doesn't resolve outside k8s
+        CDP_API_URL: http://pluginserver:6738
+      ports:
+        - port: 8000
+          httpSupport: true
+      initCommands:
+        # One-time: Atomic db + default user + grants + named Kafka collection (see utils/ch-init.sh)
+        - zsc execOnce ch-setup --retryUntilSuccessful -- bash utils/ch-init.sh
+        - zsc execOnce ${appVersionId}-django --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate --noinput"
+        - zsc execOnce ${appVersionId}-clickhouse --retryUntilSuccessful -- sh -c "cd /opt/posthog/code && /opt/posthog/python-runtime/bin/python3.12 manage.py migrate_clickhouse"
+      start: >-
+        cd /opt/posthog/code &&
+        exec /opt/posthog/python-runtime/bin/python3.12 -m gunicorn posthog.wsgi
+        --bind 0.0.0.0:8000 --workers 2 --timeout 120
+      healthCheck:
+        httpGet:
+          path: /_health
+          port: 8000
+
+  # ── worker ────────────────────────────────────────────────────────────────────
+  # Celery worker + beat (RedBeat scheduler). Consumes Kafka, writes to Postgres + ClickHouse,
+  # publishes POSTHOG_HEARTBEAT to Valkey every 10s (preflight reads it to mark celery healthy).
+  - setup: worker
+    build:
+      base: ubuntu/python@3.12
+      deployFiles:
+        - utils
+    run:
+      base: ubuntu/python@3.12
+      prepareCommands:
+        - bash utils/init.sh worker
+        - bash utils/patches.sh worker
+      envVariables:
+        DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
+        POSTHOG_POSTGRES_HOST: ${db_hostname}
+        POSTHOG_POSTGRES_PORT: ${db_port}
+        POSTHOG_POSTGRES_NAME: ${db_dbName}
+        POSTHOG_POSTGRES_USER: ${db_user}
+        POSTHOG_POSTGRES_PASSWORD: ${db_password}
+        CLICKHOUSE_HOST: ${clickhouse_hostname}
+        CLICKHOUSE_DATABASE: posthog
+        CLICKHOUSE_USER: ${clickhouse_superUser}
+        CLICKHOUSE_PASSWORD: ${clickhouse_superUserPassword}
+        CLICKHOUSE_HTTP_URL: http://${clickhouse_hostname}:${clickhouse_portHttp}
+        CLICKHOUSE_SECURE: '0'
+        CLICKHOUSE_VERIFY: '0'
+        CLICKHOUSE_CLUSTER: zerops
+        CLICKHOUSE_MIGRATIONS_CLUSTER: zerops
+        CLICKHOUSE_SATELLITE_CLUSTERS: zerops
+        CLICKHOUSE_SINGLE_SHARD_CLUSTER: zerops
+        CLICKHOUSE_WRITABLE_CLUSTER: zerops
+        CLICKHOUSE_PRIMARY_REPLICA_CLUSTER: zerops
+        CLICKHOUSE_AUX_CLUSTER: zerops
+        CLICKHOUSE_AI_EVENTS_CLUSTER: zerops
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_URL: kafka://${kafka_hostname}:${kafka_port}
+        KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USER: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        OBJECT_STORAGE_ENABLED: '1'
+        OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
+        OBJECT_STORAGE_BUCKET: ${storage_bucketName}
+        OBJECT_STORAGE_ACCESS_KEY_ID: ${storage_accessKeyId}
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: ${storage_secretAccessKey}
+        DEBUG: '0'
+        DISABLE_SECURE_SSL_REDIRECT: '1'
+        IS_BEHIND_PROXY: '1'
+        TRUST_ALL_PROXIES: '1'
+        SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
+        PYTHONUNBUFFERED: '1'
+        POSTHOG_SKIP_MIGRATION_CHECKS: '1'
+        DJANGO_SETTINGS_MODULE: posthog.settings
+      start: cd /opt/posthog/code && PATH=/opt/posthog/python-runtime/bin:$PATH exec ./bin/docker-worker-celery --with-scheduler
+
+  # ── pluginserver ──────────────────────────────────────────────────────────────
+  # Node CDP/plugin server. Owns the hog-functions HTTP API on :6738 (probed by web's
+  # plugins preflight) and the Kafka→ClickHouse event-ingestion path.
+  - setup: pluginserver
+    build:
+      base: ubuntu/nodejs@24
+      deployFiles:
+        - utils
+    run:
+      base: ubuntu/nodejs@24
+      prepareCommands:
+        - bash utils/init.sh pluginserver
+      envVariables:
+        DATABASE_URL: postgres://${db_user}:${db_password}@${db_hostname}:${db_port}/${db_dbName}
+        POSTHOG_POSTGRES_HOST: ${db_hostname}
+        POSTHOG_POSTGRES_PORT: ${db_port}
+        POSTHOG_POSTGRES_NAME: ${db_dbName}
+        POSTHOG_POSTGRES_USER: ${db_user}
+        POSTHOG_POSTGRES_PASSWORD: ${db_password}
+        CLICKHOUSE_HOST: ${clickhouse_hostname}
+        CLICKHOUSE_DATABASE: posthog
+        CLICKHOUSE_USER: ${clickhouse_superUser}
+        CLICKHOUSE_PASSWORD: ${clickhouse_superUserPassword}
+        CLICKHOUSE_HTTP_URL: http://${clickhouse_hostname}:${clickhouse_portHttp}
+        CLICKHOUSE_SECURE: '0'
+        CLICKHOUSE_VERIFY: '0'
+        CLICKHOUSE_CLUSTER: zerops
+        REDIS_URL: ${valkey_connectionString}
+        KAFKA_HOSTS: ${kafka_hostname}:${kafka_port}
+        KAFKA_URL: kafka://${kafka_hostname}:${kafka_port}
+        # Node-side Kafka config uses per-client-prefix env vars (lowercase, dotted keys).
+        # `KAFKA_<role>_<key>` becomes `<key>` (dots restored) inside the role's rdkafka config.
+        # Every producer mode the plugin-server creates needs its own SASL prefix — missing prefixes
+        # yield a plaintext producer that hangs forever retrying idempotence PID acquisition,
+        # blocking startServices()'s Promise.all and preventing the HTTP server from ever calling listen().
+        KAFKA_SECURITY_PROTOCOL: sasl_plaintext
+        KAFKA_SASL_MECHANISM: PLAIN
+        KAFKA_SASL_USER: ${kafka_user}
+        KAFKA_SASL_PASSWORD: ${kafka_password}
+        KAFKA_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_CONSUMER_security_protocol: sasl_plaintext
+        KAFKA_CONSUMER_sasl_mechanism: PLAIN
+        # dist/kafka/admin.js reads `sasl.mechanisms` (plural alias) by name when building the
+        # AdminClient — the singular form above doesn't reach it. Topic-ensure fails with
+        # `Local: Erroneous state` from librdkafka without the plural alias also set.
+        KAFKA_CONSUMER_sasl_mechanisms: PLAIN
+        KAFKA_CONSUMER_sasl_username: ${kafka_user}
+        KAFKA_CONSUMER_sasl_password: ${kafka_password}
+        KAFKA_CDP_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_CDP_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_CDP_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_CDP_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_METRICS_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_METRICS_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_METRICS_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_METRICS_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_WARPSTREAM_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_WARPSTREAM_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_WARPSTREAM_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_WARPSTREAM_PRODUCER_sasl_password: ${kafka_password}
+        KAFKA_WAREHOUSE_PRODUCER_security_protocol: sasl_plaintext
+        KAFKA_WAREHOUSE_PRODUCER_sasl_mechanism: PLAIN
+        KAFKA_WAREHOUSE_PRODUCER_sasl_username: ${kafka_user}
+        KAFKA_WAREHOUSE_PRODUCER_sasl_password: ${kafka_password}
+        # CDP/logs/traces/session-recording Redis pools each default to 127.0.0.1. ioredis treats
+        # a bare hostname as an unparseable URL and silently falls back to localhost, so the
+        # full redis:// URL form is required, not just the hostname.
+        CDP_REDIS_HOST: ${valkey_connectionString}
+        LOGS_REDIS_HOST: ${valkey_connectionString}
+        TRACES_REDIS_HOST: ${valkey_connectionString}
+        SESSION_RECORDING_API_REDIS_HOST: ${valkey_connectionString}
+        OBJECT_STORAGE_ENABLED: '1'
+        OBJECT_STORAGE_ENDPOINT: ${storage_apiUrl}
+        OBJECT_STORAGE_BUCKET: ${storage_bucketName}
+        OBJECT_STORAGE_ACCESS_KEY_ID: ${storage_accessKeyId}
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: ${storage_secretAccessKey}
+        NODE_ENV: production
+        SITE_URL: https://web-${zeropsSubdomainHost}-8000.prg1.zerops.app
+        POSTHOG_SKIP_MIGRATION_CHECKS: '1'
+        NO_RESTART_LOOP: '1'
+      start: cd /opt/posthog/code/nodejs && exec node dist/index.js
