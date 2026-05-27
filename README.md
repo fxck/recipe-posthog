@@ -166,9 +166,9 @@ Cloud terminates SASL inside its own private VPC and runs capture-rs there with 
 
 **Cost model**
 
-Zerops bills resources, not events. Our 10-service deploy at sensible idle sizing:
+Zerops bills resources, not events. Our 10-service deploy at the lowest-viable sizings (see [`zerops-import.yaml`](./zerops-import.yaml) — every runtime has vertical autoscaling enabled so these are floor values, the platform lifts CPU/RAM under load):
 
-| Line item | Sizing | ~Monthly |
+| Line item | Floor sizing (autoscales up) | ~Monthly idle |
 |---|---|---|
 | ClickHouse HA (3 nodes, mandatory) | 3 × (2 core / 4 GB / 50 GB) | ~$55 |
 | Postgres `db` | 1 core / 1 GB / 20 GB | ~$6 |
@@ -176,16 +176,22 @@ Zerops bills resources, not events. Our 10-service deploy at sensible idle sizin
 | Kafka | 1 / 2 / 20 | ~$9 |
 | Valkey | 0.5 / 1 / 5 | ~$4 |
 | Object storage + Mailpit | nominal | ~$2 |
-| 7 runtimes @ idle | 1 core / 1–2 GB each | ~$30 |
+| `web`, `worker` | 1 core / 0.5 GB each → up to 2 / 2 | ~$4 |
+| `pluginserver` (default mode, biggest Node bundle) | 1 core / 0.75 GB → 2 / 2 | ~$3 |
+| `ingestion`, `recordings` | 1 core / 0.5 GB each → 2 / 2 | ~$4 |
+| `cyclotron` | 0.5 core / 0.5 GB → 1 / 1 | ~$2 |
+| `capture` (Rust, tiny at rest) | 0.5 core / 0.25 GB → 2 / 1 | ~$1 |
 | Project core (Serious plan) | — | $10 |
-| **Idle floor** | | **~$120/mo** |
+| **Idle floor** | | **~$100/mo** |
+
+Node services cap `maxCpu` at 2 — JavaScript runs on a single event loop, so extra cores only feed the libuv I/O pool, V8 GC threads, and (for ingestion-v2) the Piscina worker pool. Beyond 2 cores per container, horizontal scaling (`maxContainers > 1`) is the right lever, not more vertical CPU. Python services (`web` gunicorn, `worker` Celery) scale linearly with cores up to their worker-count, so they're the same — 2 workers, 2 cores.
 
 PostHog Cloud at posted list price: $0.00005 per event after 1M free, $0.005 per recording after 5K free. Comparing at four traffic levels (Cloud free tier included):
 
 | Traffic / month | PostHog Cloud | Zerops | Winner |
 |---|---|---|---|
-| 1M events, 5K recordings | $0 (free tier) | ~$120 | **Cloud** |
-| 10M events, 50K recordings | ~$675 | ~$140 | Zerops by ~$535 |
+| 1M events, 5K recordings | $0 (free tier) | ~$100 | **Cloud** |
+| 10M events, 50K recordings | ~$675 | ~$120 | Zerops by ~$555 |
 | 100M events, 500K recordings | ~$8,300 | ~$600–700 | Zerops by ~$7,500 |
 | 1B events, 5M recordings | ~$60,000+ | ~$2,500–4,000 | Zerops by ~$55,000+ |
 

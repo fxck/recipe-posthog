@@ -68,6 +68,11 @@ services:
   # Runtime services — buildFromGit clones this repo into /var/www on the build container,
   # zerops.yml's deployFiles ships utils/ to runtime, run.prepareCommands lifts the image.
 
+  # Per-service sizings below are the LOWEST that boot cleanly + handle modest production load.
+  # Vertical autoscaling lifts CPU/RAM as the workload grows. Node services cap at 2 cores —
+  # JS is single-event-loop, only libuv pool + Piscina workers + V8 GC threads use extra cores.
+  # Python services use gunicorn/Celery worker processes that DO scale linearly with cores.
+  # Bumping maxContainers > 1 enables horizontal scaling once vertical hits the ceiling.
   - hostname: web
     type: ubuntu/python@3.12
     buildFromGit: https://github.com/fxck/recipe-posthog
@@ -76,10 +81,10 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 1
-      maxRam: 4
-      minCpuCores: 1
-      maxCpu: 4
+      minCpu: 1
+      maxCpu: 2
+      minRam: 0.5
+      maxRam: 2
     priority: 5
 
   - hostname: worker
@@ -89,10 +94,10 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 2
-      maxRam: 8
-      minCpuCores: 1
-      maxCpu: 4
+      minCpu: 1
+      maxCpu: 2
+      minRam: 0.5
+      maxRam: 2
     priority: 5
 
   - hostname: pluginserver
@@ -102,10 +107,11 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 1
-      maxRam: 4
-      minCpuCores: 1
-      maxCpu: 4
+      minCpu: 1
+      maxCpu: 2
+      # Default-mode pluginserver loads CDP + flags + logs + error-tracking — biggest Node bundle
+      minRam: 0.75
+      maxRam: 2
     priority: 5
 
   # ingestion-v2 — the main event-ingestion path (Kafka → enrich → ClickHouse). Split out so it
@@ -117,10 +123,10 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 1
-      maxRam: 4
-      minCpuCores: 1
-      maxCpu: 4
+      minCpu: 1
+      maxCpu: 2
+      minRam: 0.5
+      maxRam: 2
     priority: 5
 
   # recordings-blob-ingestion-v2 — pulls session-replay blobs from Kafka into object storage.
@@ -132,10 +138,10 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 1
-      maxRam: 4
-      minCpuCores: 1
-      maxCpu: 4
+      minCpu: 1
+      maxCpu: 2
+      minRam: 0.5
+      maxRam: 2
     priority: 5
 
   # cdp-cyclotron-worker — drains the Cyclotron job queue (hog-function destinations with retries).
@@ -148,10 +154,11 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 1
-      maxRam: 2
-      minCpuCores: 1
-      maxCpu: 2
+      # Lightweight job drainer; doesn't need pluginserver headroom
+      minCpu: 0.5
+      maxCpu: 1
+      minRam: 0.5
+      maxRam: 1
     priority: 5
 
   # capture-rs — high-throughput capture endpoints (events / recordings) built from our SASL-patched
@@ -165,8 +172,9 @@ services:
     minContainers: 1
     maxContainers: 1
     verticalAutoscaling:
-      minRam: 1
-      maxRam: 4
-      minCpuCores: 1
-      maxCpu: 4
+      # Rust binary is tiny at rest (~30 MB RSS); Tokio runtime scales effectively with cores
+      minCpu: 0.5
+      maxCpu: 2
+      minRam: 0.25
+      maxRam: 1
     priority: 5
