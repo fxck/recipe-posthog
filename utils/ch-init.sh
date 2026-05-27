@@ -9,19 +9,22 @@
 #      engine tables.
 #
 # Zerops's fresh ClickHouse provides none of those. This script creates all three.
+#
+# Reads the same UPPERCASE envs web already exports (CLICKHOUSE_HTTP_URL / CLICKHOUSE_USER /
+# CLICKHOUSE_PASSWORD / KAFKA_HOSTS / KAFKA_SASL_USER / KAFKA_SASL_PASSWORD). The lowercase
+# ${clickhouse_*} / ${kafka_*} forms are Zerops template refs resolved into other values at
+# deploy time — they aren't standalone container envs.
 set -euo pipefail
 
-: "${clickhouse_hostname:?}"
-: "${clickhouse_portHttp:?}"
-: "${clickhouse_superUser:?}"
-: "${clickhouse_superUserPassword:?}"
-: "${kafka_hostname:?}"
-: "${kafka_port:?}"
-: "${kafka_user:?}"
-: "${kafka_password:?}"
+: "${CLICKHOUSE_HTTP_URL:?}"
+: "${CLICKHOUSE_USER:?}"
+: "${CLICKHOUSE_PASSWORD:?}"
+: "${KAFKA_HOSTS:?}"
+: "${KAFKA_SASL_USER:?}"
+: "${KAFKA_SASL_PASSWORD:?}"
 
-CH="http://${clickhouse_hostname}:${clickhouse_portHttp}/"
-AUTH="-u ${clickhouse_superUser}:${clickhouse_superUserPassword}"
+CH="${CLICKHOUSE_HTTP_URL}/"
+AUTH="-u ${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}"
 
 curl -sf $AUTH --data "CREATE DATABASE IF NOT EXISTS posthog ON CLUSTER zerops ENGINE = Atomic" "$CH"
 
@@ -29,4 +32,4 @@ curl -sf $AUTH --data "CREATE USER IF NOT EXISTS default IDENTIFIED WITH no_pass
 
 curl -sf $AUTH --data "GRANT SELECT, INSERT, ALTER, CREATE, DROP, TRUNCATE, OPTIMIZE, SHOW, dictGet ON posthog.* TO default ON CLUSTER zerops" "$CH"
 
-curl -sf $AUTH --data "CREATE NAMED COLLECTION IF NOT EXISTS msk_cluster ON CLUSTER zerops AS kafka_broker_list = '${kafka_hostname}:${kafka_port}', kafka_security_protocol = 'SASL_PLAINTEXT', kafka_sasl_mechanism = 'PLAIN', kafka_sasl_username = '${kafka_user}', kafka_sasl_password = '${kafka_password}'" "$CH"
+curl -sf $AUTH --data "CREATE NAMED COLLECTION IF NOT EXISTS msk_cluster ON CLUSTER zerops AS kafka_broker_list = '${KAFKA_HOSTS}', kafka_security_protocol = 'SASL_PLAINTEXT', kafka_sasl_mechanism = 'PLAIN', kafka_sasl_username = '${KAFKA_SASL_USER}', kafka_sasl_password = '${KAFKA_SASL_PASSWORD}'" "$CH"
