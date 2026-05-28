@@ -32,4 +32,11 @@ curl -sf $AUTH --data "CREATE USER IF NOT EXISTS default IDENTIFIED WITH no_pass
 
 curl -sf $AUTH --data "GRANT SELECT, INSERT, ALTER, CREATE, DROP, TRUNCATE, OPTIMIZE, SHOW, dictGet ON posthog.* TO default ON CLUSTER zerops" "$CH"
 
+# PostHog's migrate_clickhouse queries system.clusters to discover the cluster topology
+# (hostname + port + shard + replica per node). Without SELECT on system.*, that query fails with
+# "Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON system.clusters."
+# Granting SELECT on system.* broadly because PostHog also reads system.zookeeper, system.replicas,
+# system.parts, etc. during migration and as part of various ops queries.
+curl -sf $AUTH --data "GRANT SELECT ON system.* TO default ON CLUSTER zerops" "$CH"
+
 curl -sf $AUTH --data "CREATE NAMED COLLECTION IF NOT EXISTS msk_cluster ON CLUSTER zerops AS kafka_broker_list = '${KAFKA_HOSTS}', kafka_security_protocol = 'SASL_PLAINTEXT', kafka_sasl_mechanism = 'PLAIN', kafka_sasl_username = '${KAFKA_SASL_USER}', kafka_sasl_password = '${KAFKA_SASL_PASSWORD}'" "$CH"
