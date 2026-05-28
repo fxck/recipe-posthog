@@ -30,6 +30,13 @@ curl -sf $AUTH --data "CREATE DATABASE IF NOT EXISTS posthog ON CLUSTER zerops E
 
 curl -sf $AUTH --data "CREATE USER IF NOT EXISTS default IDENTIFIED WITH no_password ON CLUSTER zerops" "$CH"
 
+# Force every ALTER from `default` to wait until all replicas have applied the change before
+# returning (alter_sync=2; default is 1 — wait for self only). PostHog's migrate_clickhouse
+# fans ALTERs across replicas in parallel via map_hosts_by_roles; with default sync=1, the second
+# replica's ALTER races against ZK replication of the first one and fails with code 517
+# ("Metadata on replica is not up to date with common metadata in Zookeeper"). sync=2 serializes.
+curl -sf $AUTH --data "ALTER USER default SETTINGS alter_sync = 2 ON CLUSTER zerops" "$CH"
+
 curl -sf $AUTH --data "GRANT SELECT, INSERT, ALTER, CREATE, DROP, TRUNCATE, OPTIMIZE, SHOW, dictGet ON posthog.* TO default ON CLUSTER zerops" "$CH"
 
 # PostHog's migrate_clickhouse queries system.clusters to discover the cluster topology
